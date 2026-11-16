@@ -514,9 +514,9 @@ class LlamaCppPC2Engine:
         public_safe: bool = False,
         ctx_size: int = 16384,
         min_thought_tokens: int = 12,
-        max_thought_tokens: int = 1536,
-        max_thought_and_tool_tokens: int = 3072,
-        max_tool_hops: int = 3,
+        max_thought_tokens: int = 2048,
+        max_thought_and_tool_tokens: int = 4096,
+        max_tool_hops: int = 4,
         lora_slot_count: int = 5,
     ) -> None:
         if int(n_parallel) < 1:
@@ -659,11 +659,15 @@ class LlamaCppPC2Engine:
 
         if len(prompt_ids) < 3 or prompt_ids[-1] != NEWLINE_ID:
             raise ValueError("Encoded Gemma 4 prompt does not end with <|channel>thought\\n")
+        if len(prompt_ids) > self.slot_ctx_size - 256:
+            raise ValueError(
+                f"prompt_tokens ({len(prompt_ids)}) exceeds slot context window ({self.slot_ctx_size} - 256); context_length_exceeded"
+            )
 
         max_visible = (
             max(PUBLIC_SAFE_MIN_MAX_TOKENS, min(int(max_tokens or PUBLIC_SAFE_MAX_MAX_TOKENS), PUBLIC_SAFE_MAX_MAX_TOKENS))
             if self.public_safe
-            else max(1, min(int(max_tokens or 1536), 4096))
+            else max(1, min(int(max_tokens or 2048), 8192))
         )
         temp = float(temperature) if temperature is not None else 0.85
         tp = float(top_p) if top_p is not None else 0.95
@@ -779,15 +783,12 @@ class LlamaCppPC2Engine:
                     decode_ms_total += t_final.predicted_ms
                     predicted_tokens_total += t_final.tokens_predicted
 
-                    if visible_blocks_emitted == 0:
-                        cur_prompt_text += t_final.content + CHANNEL_CLOSE_STR + TOOL_CALL_OPEN_STR
-                        seg_open_prefix = TOOL_CALL_OPEN_STR
-                    else:
-                        cur_prompt_text += t_final.content + CHANNEL_CLOSE_STR
-                        seg_open_prefix = ""
+                    cur_prompt_text += t_final.content + CHANNEL_CLOSE_STR + TOOL_CALL_OPEN_STR
+                    seg_open_prefix = TOOL_CALL_OPEN_STR
                     cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
 
                     hop_completed_calls: list[tuple[str, dict[str, Any]]] = []
+                    hop_spoken_chunks: list[str] = []
                     hop_hit_length_limit = False
 
                     for seg_idx in range(6):
@@ -913,6 +914,7 @@ class LlamaCppPC2Engine:
                                     for delta_str in b_parser.feed(b_piece):
                                         _record_first_visible()
                                         visible_chars_emitted += len(delta_str)
+                                        hop_spoken_chunks.append(delta_str)
                                         yield StreamStep(delta_text=delta_str, token_id=QUOTE_DELIM_ID)
                                 if b_done is not None:
                                     b_final = b_done
@@ -920,6 +922,7 @@ class LlamaCppPC2Engine:
                             for tail_str in b_parser.finalize():
                                 _record_first_visible()
                                 visible_chars_emitted += len(tail_str)
+                                hop_spoken_chunks.append(tail_str)
                                 yield StreamStep(delta_text=tail_str, token_id=QUOTE_DELIM_ID)
 
                             visible_blocks_emitted = b_parser.visible_blocks_emitted
@@ -976,6 +979,27 @@ class LlamaCppPC2Engine:
                         cur_prompt_text += "".join(resp_blocks) + "<|channel>thought\n"
                         cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
                         continue
+
+                    # Safety net: if Phase A planned an external tool call in `<|channel>thought`,
+                    # emitted an opening `send_message` preamble bubble first, and stopped at
+                    # `<|tool_response>` waiting for `send_message` acknowledgment, feed the
+                    # synthetic delivery receipt once so Phase A immediately emits the external tool call.
+                    if (
+                        not self.public_safe
+                        and hop_idx == 0
+                        and (hop_idx + 1) < self.max_tool_hops
+                        and not hop_hit_length_limit
+                        and bool(tool_registry.tools)
+                        and resp_blocks
+                    ):
+                        spoken_txt = "".join(hop_spoken_chunks)
+                        is_midtask_promise = bool(
+                            re.search(r"(?:这就去|先跑|先看|我先|先帮你|我看看咯|等我先|先去查)", spoken_txt)
+                        ) and not bool(re.search(r"(?:全绿|通过|修好|改好|搞定|完成|加好|写好|弄好)", spoken_txt))
+                        if is_midtask_promise:
+                            cur_prompt_text += "".join(resp_blocks) + "<|channel>thought\n"
+                            cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
+                            continue
 
                     if visible_blocks_emitted == 0 and last_calc_stdout:
                         _record_first_visible()
@@ -1068,13 +1092,18 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
                 self._send_json(400, make_error_payload(f"Malformed request: {exc}"))
                 return
 
+            raw_max_tok = (
+                req.get("max_tokens")
+                if req.get("max_tokens") is not None
+                else req.get("max_completion_tokens")
+            )
             try:
                 model_tag, prompt_tokens, step_iter = engine.generate_stream(
                     messages=req.get("messages") or [],
                     model_field=req.get("model"),
                     temperature=req.get("temperature", 0.85),
                     top_p=req.get("top_p", 0.95),
-                    max_tokens=req.get("max_tokens", 1536),
+                    max_tokens=raw_max_tok if raw_max_tok is not None else 2048,
                     seed=req.get("seed"),
                     tools=None if engine.public_safe else (req.get("tools") if isinstance(req.get("tools"), list) else None),
                 )
@@ -1139,23 +1168,34 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
                 self.wfile.flush()
 
                 final_reason = "stop"
+                streamed_chunks = 0
                 for step in step_iter:
                     if step.delta_text:
+                        streamed_chunks += 1
                         c_chunk = make_chunk_payload(req_id, created, model_tag, {"content": step.delta_text}, None)
                         self.wfile.write(f"data: {json.dumps(c_chunk, ensure_ascii=False)}\n\n".encode("utf-8"))
                         self.wfile.flush()
                     step_ext = getattr(step, "external_tool_calls", None)
                     if step_ext:
+                        streamed_chunks += len(step_ext)
                         tc_chunk = make_chunk_payload(req_id, created, model_tag, make_openai_tool_chunk_delta(step_ext), None)
                         self.wfile.write(f"data: {json.dumps(tc_chunk, ensure_ascii=False)}\n\n".encode("utf-8"))
                         self.wfile.flush()
                     if step.finish_reason is not None:
                         final_reason = step.finish_reason
 
-                stop_chunk = make_chunk_payload(req_id, created, model_tag, {}, final_reason)
+                pred_n = int(step_iter.telemetry.get("predicted_tokens") or streamed_chunks)
+                usage_obj = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": pred_n,
+                    "total_tokens": prompt_tokens + pred_n,
+                }
+                stop_chunk = make_chunk_payload(req_id, created, model_tag, {}, final_reason, usage=usage_obj)
                 self.wfile.write(f"data: {json.dumps(stop_chunk, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
             finally:
                 step_iter.close()
 
@@ -1174,6 +1214,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tokenizer-path", type=Path, default=None)
     ap.add_argument("--n-parallel", type=int, default=1)
     ap.add_argument("--ctx-size", type=int, default=16384)
+    ap.add_argument("--max-thought-tokens", type=int, default=2048)
+    ap.add_argument("--max-thought-and-tool-tokens", type=int, default=4096)
     ap.add_argument("--public-safe", action="store_true")
     args = ap.parse_args(argv)
 
@@ -1184,6 +1226,8 @@ def main(argv: list[str] | None = None) -> int:
         n_parallel=args.n_parallel,
         public_safe=args.public_safe,
         ctx_size=args.ctx_size,
+        max_thought_tokens=args.max_thought_tokens,
+        max_thought_and_tool_tokens=args.max_thought_and_tool_tokens,
     )
     srv = create_pc2_http_server(engine, host=args.host, port=args.port)
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=srv.shutdown, daemon=True).start())

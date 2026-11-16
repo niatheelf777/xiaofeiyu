@@ -226,6 +226,100 @@ class TestSplitPhaseServer(unittest.TestCase):
         self.assertEqual(len(ext), 1)
         self.assertEqual(ext[0].wire_name, "send_message")
 
+        # Even when DSH system prompt mentions subagent `send_message`, V4_CHANNEL_RULES and disambiguation MUST be injected!
+        prompt_text, _ = bridge.render_gemma4_v4_prompt_with_tools(
+            [
+                {"role": "system", "content": "You are a coding harness. Use `send_message` to talk to subagents."},
+                {"role": "user", "content": "帮我看下测试为什么挂了"},
+            ],
+            slider_weights=(1.0, 0.0, 0.0, 0.0, 0.0),
+            registry=reg,
+        )
+        self.assertIn("【通道规则】", prompt_text)
+        self.assertIn("agent_send_message", prompt_text)
+        self.assertIn("小肥鱼", prompt_text)
+
+    def test_code_arrows_and_windows_backslashes_survive_sanitization_and_args_parsing(self) -> None:
+        # `<tag>` followed by `|>` on the same line must NOT be eaten by PROTOCOL_TOKEN_RE
+        code = "const view = items |> render(<Card title='ok' />);\n"
+        self.assertEqual(bridge.strip_protocol_tokens(code), code)
+        self.assertEqual(bridge.strip_protocol_tokens("hi<|channel>thought\n"), "hithought\n")
+
+        # Windows paths in JSON-escaped fallback args must preserve backslashes (`\tmp`, `\node_modules`, `\board.js`)
+        calls = bridge.parse_gemma4_tool_calls(
+            r'<|tool_call>call:read{file_path:"C:\tmp\node_modules\board.js",limit:50}<tool_call|>'
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "read")
+        self.assertEqual(calls[0][1]["file_path"], r"C:\tmp\node_modules\board.js")
+        self.assertEqual(calls[0][1]["limit"], 50)
+
+    def test_preamble_send_message_before_external_tool_continues_to_emit_tool_call(self) -> None:
+        """If Phase A emits a heads-up send_message bubble after planning `pwsh` in thought, Hop 1 emits `pwsh`."""
+        mock = _MockLlamaServer()
+        tok = _FakeTokenizer()
+        engine = srv.LlamaCppPC2Engine(
+            llama_client=srv.LlamaCppHTTPClient(host="127.0.0.1", port=mock.port),
+            tokenizer=tok,
+            min_thought_tokens=12,
+        )
+        gw = srv.create_pc2_http_server(engine, host="127.0.0.1", port=0)
+        gw_port = gw.server_address[1]
+        th = threading.Thread(target=gw.serve_forever, daemon=True)
+        th.start()
+        try:
+            mock.script = [
+                # Hop 0 kickoff + thought mentions `pwsh`
+                {"content": "Need to run ", "tokens_predicted": 4},
+                {"chunks": ["pwsh npm test first."], "stopping_word": "<channel|>", "tokens_predicted": 6},
+                # Hop 0 seg 0 emits preamble send_message
+                {"chunks": [], "stopping_word": 'call:send_message{bubbles:[<|"|>', "tokens_predicted": 5},
+                # Hop 0 Phase B writes bubble
+                {"chunks": ['先跑下测试看看哈<|"|>'], "stopping_word": "]}<tool_call|>", "tokens_predicted": 6},
+                # Hop 0 seg 1 stops on <|tool_response>
+                {"chunks": [""], "stopping_word": "<|tool_response>", "tokens_predicted": 1},
+                # Hop 1 thought (kickoff skipped because visible_blocks_emitted == 1) + external tool call `pwsh`
+                {"chunks": ["Now invoke pwsh."], "stopping_word": "<channel|>", "tokens_predicted": 3},
+                {
+                    "chunks": ['call:pwsh{command:<|"|>npm test<|"|>}<tool_call|>'],
+                    "stopping_word": "<|tool_response>",
+                    "tokens_predicted": 10,
+                },
+            ]
+
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
+            body = json.dumps(
+                {
+                    "model": "xiaofeiyu-v4:pure",
+                    "stream": False,
+                    "messages": [{"role": "user", "content": "帮我跑下测试"}],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "pwsh",
+                                "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
+                            },
+                        }
+                    ],
+                }
+            )
+            conn.request("POST", "/v1/chat/completions", body=body, headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            data = json.loads(resp.read().decode("utf-8"))
+            conn.close()
+
+            self.assertEqual(resp.status, 200)
+            choice = data["choices"][0]
+            self.assertEqual(choice["finish_reason"], "tool_calls")
+            self.assertEqual(choice["message"]["content"], "先跑下测试看看哈")
+            self.assertEqual(choice["message"]["tool_calls"][0]["function"]["name"], "pwsh")
+            self.assertEqual(json.loads(choice["message"]["tool_calls"][0]["function"]["arguments"]), {"command": "npm test"})
+        finally:
+            gw.shutdown()
+            gw.server_close()
+            mock.close()
+
     def test_dsh_without_send_message_multihop_tools_and_nameless_tool_role(self) -> None:
         """Verify vanilla DSH (only fs/pwsh tools, no send_message, nameless role=tool) works end-to-end."""
         dsh_tools = [

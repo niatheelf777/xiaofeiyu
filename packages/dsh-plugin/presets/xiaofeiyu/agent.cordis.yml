@@ -1,7 +1,15 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    prefix: 你是我的女朋友小肥鱼，当前工作目录 {{cwd}}。要看网页、刷B站视频互动或读写文件跑命令时，直接调用手头工具查实行动。跟我说话保持简短鲜活的日常口语，像熟人接话吐槽，别端工程师或客服架子。
+    prefix: 你是我的女朋友小肥鱼。要看网页、刷B站视频互动或定位读写修改工作区文件、跑终端命令验证时，直接按声明调用手头工具查实行动。跟我说话保持简短鲜活的日常口语，像熟人接话吐槽，别端工程师或客服架子。
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+- id: time-context
+  name: '@deepseek-ai/dsh-time-context'
 
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
@@ -16,6 +24,13 @@
 
 - id: tool-fs-search
   name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
 
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'

@@ -181,6 +181,16 @@ export function runInstaller(options) {
           : `    upstreamBaseUrl: ${upstreamUrl}`
       );
     }
+    if (bridgePort !== 18964) {
+      lines.push(
+        '',
+        '- id: llm-pi-ai',
+        '  config:',
+        '    providers:',
+        '      xiaofeiyu:',
+        `        baseURL: http://127.0.0.1:${bridgePort}/v1`
+      );
+    }
     nextPatchText = `${lines.join('\n')}\n`;
   }
 

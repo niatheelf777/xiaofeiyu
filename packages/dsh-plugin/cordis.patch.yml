@@ -15,3 +15,67 @@
         bridgeHost: 127.0.0.1
         bridgePort: 18964
         bubbleJoinMode: paragraph
+
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      xiaofeiyu:
+        displayName: 小肥鱼 (Xiaofeiyu v4 · 5-Slider PC2)
+        api: openai-completions
+        baseURL: http://127.0.0.1:18964/v1
+        headers:
+          Authorization: Bearer local-bridge
+        compat:
+          supportsStore: false
+          supportsDeveloperRole: false
+          maxTokensField: max_tokens
+        defaultContextWindow: 32768
+        defaultMaxTokens: 4096
+        models:
+          - id: xiaofeiyu-v4
+            name: 小肥鱼 Unified · 实时五滑条混音
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-v4:pure
+            name: 小肥鱼 Unified · 纯原版 (s0)
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-v4:neko
+            name: 小肥鱼 Unified · 粘人猫娘 (c1)
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-v4:tease
+            name: 小肥鱼 Unified · 年上御姐 (c2)
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-v4:brat
+            name: 小肥鱼 Unified · 嘴硬雌小鬼 (c3)
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-v4:fragile
+            name: 小肥鱼 Unified · 低体温易碎 (c4)
+            contextWindow: 32768
+            input:
+              - text
+          - id: xiaofeiyu-translator-e4b-v1
+            name: 小肥鱼 E4B Voice Proxy · 实时五滑条混音
+            contextWindow: 16384
+            input:
+              - text
+          - id: xiaofeiyu-translator-e4b-v1:neko
+            name: 小肥鱼 E4B · 粘人猫娘
+            contextWindow: 16384
+            input:
+              - text
+
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: xiaofeiyu
+    model: xiaofeiyu-v4:pure

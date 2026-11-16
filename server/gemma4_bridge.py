@@ -66,7 +66,10 @@ DEFAULT_COLLISION_ALIASES: dict[str, str] = {
     "run_python": "ext_run_python",
 }
 
-PROTOCOL_TOKEN_RE = re.compile(r"<\|[^>]*>|<[^<\n]*\|>|<bos>|<eos>")
+PROTOCOL_TOKEN_RE = re.compile(
+    r"<\|(?:tool|tool_call|tool_response|channel|turn|think|\"|\|)[^>\n]*>|"
+    r"<(?:tool|tool_call|tool_response|channel|turn)\|>|<bos>|<eos>"
+)
 HER_BARE_PREFIX_RE = re.compile(r"^\s*她\s*[：:]\s*")
 YOU_BARE_PREFIX_RE = re.compile(r"^\s*你\s*[：:]\s*")
 FENCE_OPEN_RE = re.compile(r"^\s*```([a-zA-Z0-9_+#.-]*)\s*$")
@@ -91,13 +94,19 @@ V4_CHANNEL_RULES = (
 )
 
 EXTERNAL_TOOLS_ADDENDUM = (
-    "4. 当需要查网页、看B站视频/评论/动态、点赞评论互动或读写工作区文件终端时，直接按声明调用对应的外部工具并等待返回结果；"
-    "拿到外部工具返回的数据或素材后，用你自己的话消化重点，必须通过 `send_message` 跟男朋友自然聊一两句真实看法或吐槽，绝不照抄摘要或退化成客服播报腔。"
+    "4. 当需要查网页、看B站视频/评论/动态、点赞评论互动，或定位/阅读/修改工作区文件、执行终端命令与管理待办时，"
+    "每一步直接按工具声明的参数名与类型输出外部 `<|tool_call>` 连续推进（只填业务必需参数，不要填 `sandbox_permissions` 或 `justification`；修改已有文件前先 `read` 查清原文，用 `edit` 替换时 `old_string` 必须去掉 `read` 输出的行号前缀如 `45: ` 并精确保留文件原有缩进空格；改完直接调用终端工具重跑测试确认，严禁中途调 `send_message` 停下）。"
+    "等全部需要的外部操作与测试验证真正完成后，最后再调用 `send_message` 用一两句简短自然的微信口语告诉男朋友真实结果或看法，绝不照抄终端原始输出或退化成客服播报腔。"
+)
+
+SUBAGENT_SEND_DISAMBIGUATION = (
+    "5. 通道区分：向男朋友（当前用户）开口说话一律调用 `send_message{bubbles:[...]}`；"
+    "仅在需要给后台子代理（subagent）发送跟进指令时才调用 `agent_send_message`。"
 )
 
 GEMMA4_V4_TOOL_DECLARATIONS = (
     "<|tool>declaration:send_message{"
-    'description:<|"|>向男朋友发送1到4条微信口语消息气泡（直接送达手机，不会返回tool_response；若同轮还需附带代码块、表格、长文或调用外部工具，可在同一轮连续输出多个tool_call，严禁只发一句口语预告却不调后续工具就结束回合）<|"|>,'
+    'description:<|"|>向男朋友发送1到4条微信口语消息气泡（直接送达手机，不会返回tool_response；若需要调用外部工具查文件或跑命令，必须先直接输出外部tool_call拿到结果后再调send_message；若同轮需附带代码块或表格，可在send_message后紧接输出send_code_or_doc）<|"|>,'
     "parameters:{properties:{bubbles:{"
     'description:<|"|>按顺序发送的1到4条简短微信口语气泡，不用Emoji，不写[动作]或（动作）舞台括号<|"|>,'
     'items:{type:<|"|>STRING<|"|>},type:<|"|>ARRAY<|"|>}},'
@@ -494,6 +503,10 @@ class _GemmaArgsParser:
     def parse_json_quoted_str(self) -> str:
         quote_ch = self.text[self.pos]
         self.pos += 1
+        start_inner = self.pos
+        is_unescaped_win_path = bool(
+            re.match(r'^[A-Za-z]:\\(?!\\)', self.text[start_inner : start_inner + 8])
+        )
         out: list[str] = []
         while self.pos < self.n:
             ch = self.text[self.pos]
@@ -503,8 +516,28 @@ class _GemmaArgsParser:
             if ch == "\\" and self.pos < self.n:
                 esc = self.text[self.pos]
                 self.pos += 1
-                escapes = {"n": "\n", "r": "\r", "t": "\t", '"': '"', "'": "'", "\\": "\\", "/": "/"}
-                out.append(escapes.get(esc, esc))
+                if is_unescaped_win_path:
+                    if esc in (quote_ch, "\\"):
+                        out.append(esc)
+                    else:
+                        out.append("\\" + esc)
+                    continue
+                escapes = {
+                    "n": "\n",
+                    "r": "\r",
+                    "t": "\t",
+                    '"': '"',
+                    "'": "'",
+                    "\\": "\\",
+                    "/": "/",
+                }
+                if esc in escapes:
+                    out.append(escapes[esc])
+                elif esc == "u" and self.pos + 4 <= self.n and re.fullmatch(r"[0-9a-fA-F]{4}", self.text[self.pos : self.pos + 4]):
+                    out.append(chr(int(self.text[self.pos : self.pos + 4], 16)))
+                    self.pos += 4
+                else:
+                    out.append("\\" + esc)
             else:
                 out.append(ch)
         return "".join(out)
@@ -681,9 +714,19 @@ def extract_message_content_and_media(raw_content: Any) -> tuple[str, list[str]]
     return "\n".join(t for t in texts if t), markers
 
 
-def normalize_system_prompt(system_text: str, *, has_external_tools: bool = False) -> str:
+def normalize_system_prompt(
+    system_text: str,
+    *,
+    has_external_tools: bool = False,
+    has_subagent_send_alias: bool = False,
+) -> str:
     cleaned = strip_protocol_tokens(system_text).strip()
-    rules = f"{V4_CHANNEL_RULES}\n{EXTERNAL_TOOLS_ADDENDUM}" if has_external_tools else V4_CHANNEL_RULES
+    ext_block = (
+        f"{EXTERNAL_TOOLS_ADDENDUM}\n{SUBAGENT_SEND_DISAMBIGUATION}"
+        if (has_external_tools and has_subagent_send_alias)
+        else EXTERNAL_TOOLS_ADDENDUM
+    )
+    rules = f"{V4_CHANNEL_RULES}\n{ext_block}" if has_external_tools else V4_CHANNEL_RULES
     if not cleaned:
         return f"{DEFAULT_PERSONA_HEADER}\n{rules}"
     lines = [ln.strip() for ln in cleaned.split("\n") if ln.strip()]
@@ -695,10 +738,21 @@ def normalize_system_prompt(system_text: str, *, has_external_tools: bool = Fals
             ln = YOU_BARE_PREFIX_RE.sub("关于男朋友：", ln, count=1)
         fixed.append(ln)
     joined = "\n".join(fixed)
-    if "send_message" not in joined:
+    is_auxiliary_title_task = "concise title" in joined.lower() or "session title" in joined.lower()
+    if is_auxiliary_title_task:
+        return (
+            f"{joined}\n"
+            "【通道规则】：请调用 `send_message`，在 `bubbles` 数组中仅放入唯一一条简短会话标题"
+            "（5到12个汉字，不要标点引号，严禁把标题写成跟用户的对话回复）。"
+        )
+    if "小肥鱼" not in joined:
+        joined = f"{DEFAULT_PERSONA_HEADER}\n{joined}"
+    if "【通道规则】" not in joined:
         joined = f"{joined}\n{rules}"
     elif has_external_tools and "外部工具" not in joined:
-        joined = f"{joined}\n{EXTERNAL_TOOLS_ADDENDUM}"
+        joined = f"{joined}\n{ext_block}"
+    elif has_external_tools and has_subagent_send_alias and "agent_send_message" not in joined:
+        joined = f"{joined}\n{SUBAGENT_SEND_DISAMBIGUATION}"
     return joined
 
 
@@ -794,13 +848,22 @@ def render_gemma4_v4_prompt_with_tools(
         else:
             conv_msgs.append(m)
 
-    sys_hdr = normalize_system_prompt("\n".join(sys_parts), has_external_tools=reg.has_external_tools)
+    sys_hdr = normalize_system_prompt(
+        "\n".join(sys_parts),
+        has_external_tools=reg.has_external_tools,
+        has_subagent_send_alias=("agent_send_message" in reg.by_gemma_name),
+    )
     cue = build_slider_attitude_block(slider_weights)
     if cue:
         sys_hdr = f"{sys_hdr}\n{cue}"
 
     tool_decls = GEMMA4_V4_TOOL_DECLARATIONS + format_gemma4_external_tools_block(reg)
     parts: list[str] = [f"{BOS_TEXT}{TURN_OPEN_STR}system\n<|think|>\n{sys_hdr}{tool_decls}{TURN_END_STR}\n"]
+
+    last_user_idx = -1
+    for idx_m, m_item in enumerate(conv_msgs):
+        if str(m_item.get("role") or "user").strip().lower() == "user":
+            last_user_idx = idx_m
 
     i = 0
     n = len(conv_msgs)
@@ -817,15 +880,21 @@ def render_gemma4_v4_prompt_with_tools(
             continue
 
         if role in ("assistant", "model"):
+            block_start_idx = i
             hop_segments: list[str] = []
             call_id_to_wire_name: dict[str, str] = {}
             while i < n and str(conv_msgs[i].get("role") or "").strip().lower() in ("assistant", "model", "tool"):
                 step_calls: list[str] = []
                 step_resps: list[str] = []
                 pending_wire_names: list[str] = []
+                step_thinking = ""
 
                 if str(conv_msgs[i].get("role") or "").strip().lower() in ("assistant", "model"):
                     cur = conv_msgs[i]
+                    if i > last_user_idx:
+                        raw_th = cur.get("reasoning_content") or cur.get("reasoning") or ""
+                        if isinstance(raw_th, str) and raw_th.strip():
+                            step_thinking = strip_protocol_tokens(raw_th).strip()
                     txt, _ = extract_message_content_and_media(cur.get("content"))
                     if txt.strip():
                         cb, rb = _render_spoken_segments_as_pc2_pairs(txt)
@@ -863,20 +932,26 @@ def render_gemma4_v4_prompt_with_tools(
                             raw_name = "tool"
                     g_name = reg.to_gemma_name(raw_name)
                     step_resps.append(
-                        format_gemma4_tool_response_block(g_name, strip_protocol_tokens(t_txt).strip())
+                        format_gemma4_tool_response_block(g_name, strip_protocol_tokens(t_txt).strip("\r\n"))
                     )
                     resp_idx += 1
                     i += 1
 
-                hop_segments.append(
-                    f"{CHANNEL_OPEN_STR}thought\n{CHANNEL_CLOSE_STR}"
-                    + "".join(step_calls)
-                    + "".join(step_resps)
-                )
+                # Follow Google's canonical Gemma 4 template: only emit `<|channel>thought...<channel|>`
+                # on completed historical turns (`block_start_idx < last_user_idx` first hop) or when actual
+                # `reasoning_content` was preserved; NEVER inject empty or boilerplate thought blocks into
+                # active multi-step tool histories (`block_start_idx > last_user_idx`).
+                if step_thinking:
+                    thought_prefix = f"{CHANNEL_OPEN_STR}thought\n{step_thinking}\n{CHANNEL_CLOSE_STR}"
+                elif block_start_idx < last_user_idx and not hop_segments:
+                    thought_prefix = f"{CHANNEL_OPEN_STR}thought\n{CHANNEL_CLOSE_STR}"
+                else:
+                    thought_prefix = ""
+                hop_segments.append(thought_prefix + "".join(step_calls) + "".join(step_resps))
 
             parts.append(f"{TURN_OPEN_STR}model\n" + "".join(hop_segments))
             if i < n:
-                parts.append(f"{CHANNEL_OPEN_STR}thought\n{CHANNEL_CLOSE_STR}{TURN_END_STR}\n")
+                parts.append(f"{TURN_END_STR}\n")
             else:
                 parts.append(f"{CHANNEL_OPEN_STR}thought\n")
                 return "".join(parts), reg
@@ -1006,14 +1081,24 @@ def run_calc_python_sandbox(code_str: str, timeout_sec: float = 2.0) -> str:
     return (out[:997] + "...") if len(out) > 1000 else (out or "OK (no stdout)")
 
 
-def make_chunk_payload(req_id: str, created: int, model_tag: str, delta: dict, finish_reason: str | None) -> dict:
-    return {
+def make_chunk_payload(
+    req_id: str,
+    created: int,
+    model_tag: str,
+    delta: dict,
+    finish_reason: str | None,
+    usage: dict[str, int] | None = None,
+) -> dict:
+    payload: dict[str, Any] = {
         "id": req_id,
         "object": "chat.completion.chunk",
         "created": created,
         "model": model_tag,
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
     }
+    if usage is not None:
+        payload["usage"] = usage
+    return payload
 
 
 def make_completion_payload(

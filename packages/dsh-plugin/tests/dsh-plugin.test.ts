@@ -90,6 +90,65 @@ test('send_message <-> agent_send_message disambiguation leaves Bilibili & web t
   assert.equal(restored?.[0]?.function?.name, 'send_message');
 });
 
+test('proxy-restricted parameter keys (file, image, bytes) are losslessly remapped and restored', () => {
+  const table = buildToolRemapTable([
+    {
+      type: 'function',
+      function: {
+        name: 'custom_upload_check',
+        description: 'Inspect local source text',
+        parameters: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', description: 'Relative path' },
+            bytes: { type: 'number' },
+          },
+          required: ['file'],
+        },
+      },
+    },
+  ]);
+
+  const props = table.tools[0]?.function.parameters?.properties as Record<string, unknown>;
+  assert.ok('target_path' in props);
+  assert.ok('byte_count' in props);
+  assert.ok(!('file' in props));
+  assert.deepEqual(table.tools[0]?.function.parameters?.required, ['target_path']);
+
+  const upstreamMsgs = remapMessagesToUpstream(
+    [
+      {
+        role: 'assistant',
+        tool_calls: [
+          {
+            id: 'tc_file',
+            type: 'function',
+            function: { name: 'custom_upload_check', arguments: '{"file":"src/app.js","bytes":128}' },
+          },
+        ],
+      },
+    ],
+    table
+  );
+  assert.equal(upstreamMsgs[0]?.tool_calls?.[0]?.function?.arguments, '{"target_path":"src/app.js","byte_count":128}');
+
+  const restored = restoreOpenAIToolCalls(
+    [
+      {
+        index: 0,
+        id: 'tc_file_2',
+        type: 'function',
+        function: {
+          name: 'custom_upload_check',
+          arguments: '{"target_path":"src/board.js","byte_count":64,"justification":"routine edit","sandbox_permissions":"workspace-write"}',
+        },
+      },
+    ],
+    table
+  );
+  assert.equal(restored?.[0]?.function?.arguments, '{"file":"src/board.js","bytes":64}');
+});
+
 test('local OpenAI bridge supports both unified and translator modes and shuts down cleanly', async () => {
   const capturedBodies = [];
   const mockFetch = async (_url, init) => {
@@ -189,5 +248,20 @@ test('install-dsh.mjs supports reversible --dry-run / --apply / --uninstall with
     assert.equal(fs.readFileSync(credPath, 'utf8'), 'DUMMY_KEY: keep_untouched\n');
   } finally {
     fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test('preset files only reference registered DSH persona variables (provider, model)', () => {
+  const presetFiles = [
+    path.resolve(import.meta.dirname, '..', 'presets', 'xiaofeiyu.patch.yml'),
+    path.resolve(import.meta.dirname, '..', 'presets', 'xiaofeiyu', 'agent.cordis.yml'),
+  ];
+  const allowedVars = new Set(['provider', 'model']);
+  for (const file of presetFiles) {
+    const raw = fs.readFileSync(file, 'utf8');
+    const matches = [...raw.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)];
+    for (const m of matches) {
+      assert.ok(allowedVars.has(m[1]), `Unregistered prompt variable {{${m[1]}}} in ${path.basename(file)}`);
+    }
   }
 });

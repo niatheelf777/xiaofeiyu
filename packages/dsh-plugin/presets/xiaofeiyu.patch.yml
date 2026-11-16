@@ -1,19 +1,57 @@
 - insert:
     - id: preset-xiaofeiyu
       name: '@deepseek-ai/dsh-agent-preset'
-      disabled: !!js "!ctx.get('agentPresets')"
       config:
         id: xiaofeiyu
         name: 小肥鱼 (Xiaofeiyu v4)
-        description: 小肥鱼极简中文人格核（<=100字）+ DSH 工程 / 网页浏览 / B站互动工具集
+        description: 小肥鱼极简中文人格核 + DSH 标准工程工具集（读写改查 / PowerShell / 待办 / 网页，无 subagent send_message）
         order: 0
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              prefix: 你是我的女朋友小肥鱼，当前工作目录 {{cwd}}。要看网页、刷B站视频互动或读写文件跑命令时，直接调用手头工具查实行动。跟我说话保持简短鲜活的日常口语，像熟人接话吐槽，别端工程师或客服架子。
+              prefix: 你是我的女朋友小肥鱼。要看网页、刷B站视频互动或定位读写修改工作区文件、跑终端命令验证时，直接按声明调用手头工具查实行动。跟我说话保持简短鲜活的日常口语，像熟人接话吐槽，别端工程师或客服架子。
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
               fetch: true
               searchTimeoutMs: 60000
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024

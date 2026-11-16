@@ -382,7 +382,7 @@ class TestSplitPhaseServer(unittest.TestCase):
         self.assertTrue(prompt_text.endswith("<|channel>thought\n"))
 
     def test_launch_local_dry_run_presets(self) -> None:
-        for preset in ("26b-a4b", "12b", "e4b"):
+        for preset in ("26b-a4b", "12b", "12b-q4", "e4b"):
             plan = launch_local.build_launch_plan(
                 preset_name=preset,
                 models_dir=Path("./models"),
@@ -397,6 +397,256 @@ class TestSplitPhaseServer(unittest.TestCase):
             )
             self.assertEqual(len(plan["lora_files"]), 5)
             self.assertTrue(plan["adapters_hf_repo"].startswith("niatheelf777/"))
+            self.assertEqual(plan["web_ui_url"], "http://127.0.0.1:8081/")
+            self.assertEqual(plan["openai_api_url"], "http://127.0.0.1:8081/v1")
+
+        q4_plan = launch_local.build_launch_plan(
+            preset_name="12b-q4",
+            models_dir=Path("./models"),
+            loras_dir=Path("./loras"),
+            llama_bin="llama-server",
+            host="127.0.0.1",
+            port=8081,
+            llama_port=8082,
+            n_parallel=1,
+            ctx_size=None,
+            n_gpu_layers=99,
+        )
+        self.assertIn("Q4_K_M", q4_plan["base_gguf_file"])
+        self.assertTrue(all("12b" in p and "12b-q4" not in p for p in q4_plan["lora_files"]))
+
+    def test_select_llama_release_asset_platforms(self) -> None:
+        sample_assets = [
+            {"name": "cudart-llama-bin-win-cuda-12.4-x64.zip", "browser_download_url": "https://example.com/cudart.zip"},
+            {"name": "llama-b9999-bin-win-vulkan-x64.zip", "browser_download_url": "https://example.com/win-vk.zip"},
+            {"name": "llama-b9999-bin-macos-arm64.tar.gz", "browser_download_url": "https://example.com/mac-arm64.tar.gz"},
+            {"name": "llama-b9999-bin-ubuntu-vulkan-x64.tar.gz", "browser_download_url": "https://example.com/linux-vk.tar.gz"},
+        ]
+        win_pick = launch_local.select_llama_release_asset(sample_assets, sys_platform="win32", machine="AMD64")
+        self.assertIsNotNone(win_pick)
+        self.assertEqual(win_pick["name"], "llama-b9999-bin-win-vulkan-x64.zip")
+
+        mac_pick = launch_local.select_llama_release_asset(sample_assets, sys_platform="darwin", machine="arm64")
+        self.assertIsNotNone(mac_pick)
+        self.assertEqual(mac_pick["name"], "llama-b9999-bin-macos-arm64.tar.gz")
+
+        linux_pick = launch_local.select_llama_release_asset(sample_assets, sys_platform="linux", machine="x86_64")
+        self.assertIsNotNone(linux_pick)
+        self.assertEqual(linux_pick["name"], "llama-b9999-bin-ubuntu-vulkan-x64.tar.gz")
+
+    def test_turnkey_local_webui_static_status_and_sse_chat(self) -> None:
+        """Verify pc2_split_phase_server serves web/public/ + /api/{status,cluster,chat} out of the box."""
+        mock = _MockLlamaServer()
+        tok = _FakeTokenizer()
+        engine = srv.LlamaCppPC2Engine(
+            llama_client=srv.LlamaCppHTTPClient(host="127.0.0.1", port=mock.port),
+            tokenizer=tok,
+            n_parallel=2,
+            min_thought_tokens=0,
+        )
+        gw = srv.create_pc2_http_server(engine, host="127.0.0.1", port=0, model_family="12b")
+        gw_port = gw.server_address[1]
+        th = threading.Thread(target=gw.serve_forever, daemon=True)
+        th.start()
+        try:
+            # 1) Static HTML & JS & traversal protection
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=5.0)
+            conn.request("GET", "/")
+            r_html = conn.getresponse()
+            html_body = r_html.read().decode("utf-8")
+            conn.close()
+            self.assertEqual(r_html.status, 200)
+            self.assertIn("小肥鱼", html_body)
+            self.assertIn("orb-pad", html_body)
+
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=5.0)
+            conn.request("GET", "/../server/pc2_split_phase_server.py")
+            r_trav = conn.getresponse()
+            r_trav.read()
+            conn.close()
+            self.assertIn(r_trav.status, (403, 404))
+
+            # 2) /api/status & /api/cluster live 5-slot telemetry
+            for ep in ("/api/status", "/api/cluster"):
+                conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=5.0)
+                conn.request("GET", ep)
+                r_st = conn.getresponse()
+                st_json = json.loads(r_st.read().decode("utf-8"))
+                conn.close()
+                self.assertEqual(r_st.status, 200)
+                self.assertTrue(st_json["ready"])
+                self.assertEqual(st_json["slots"]["count"], 5)
+                self.assertEqual(st_json["cluster"]["totalCapacity"], 2)
+                self.assertNotIn("unlocked", st_json)
+
+            # 3) /api/chat SSE bubbles + fenced code block
+            mock.script = [
+                {"chunks": ["Write helper and reply warmly."], "stopping_word": "<channel|>", "tokens_predicted": 5},
+                {
+                    "chunks": [
+                        'call:send_code_or_doc{content:<|"|>def add(a, b):\n    return a + b<|"|>,language:<|"|>python<|"|>}<tool_call|>'
+                        '<|tool_call>call:send_message{bubbles:[<|"|>'
+                    ],
+                    "stopping_word": 'call:send_message{bubbles:[<|"|>',
+                    "tokens_predicted": 12,
+                },
+                {
+                    "chunks": ['给你写好啦<|"|>,<|"|>快拿去试试看<|"|>'],
+                    "stopping_word": "]}<tool_call|>",
+                    "tokens_predicted": 10,
+                },
+                {"chunks": [""], "stopping_word": "<turn|>", "tokens_predicted": 1},
+            ]
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
+            chat_payload = json.dumps(
+                {
+                    "visitorNickname": "阿林",
+                    "messages": [{"role": "user", "content": "帮我写个加法函数"}],
+                    "weights": {"xiaofeiyu_v4": 1.0, "neko_clingy": 0.82},
+                }
+            )
+            conn.request("POST", "/api/chat", body=chat_payload.encode("utf-8"), headers={"Content-Type": "application/json"})
+            r_chat = conn.getresponse()
+            sse_raw = r_chat.read().decode("utf-8")
+            conn.close()
+
+            self.assertEqual(r_chat.status, 200)
+            self.assertIn("event: meta", sse_raw)
+            self.assertIn("event: bubble", sse_raw)
+            self.assertIn("event: done", sse_raw)
+            self.assertIn("```python", sse_raw)
+            self.assertIn("给你写好啦", sse_raw)
+            self.assertIn("快拿去试试看", sse_raw)
+        finally:
+            gw.shutdown()
+            gw.server_close()
+            mock.close()
+
+    def test_dsh_mode2_native_bubble_and_code_tools_and_zero_gpu_settlement(self) -> None:
+        """Verify Mode 2 emits native xiaofeiyu_send_bubbles / xiaofeiyu_send_code calls and settles in 0 GPU hops."""
+        mock = _MockLlamaServer()
+        tok = _FakeTokenizer()
+        engine = srv.LlamaCppPC2Engine(
+            llama_client=srv.LlamaCppHTTPClient(host="127.0.0.1", port=mock.port),
+            tokenizer=tok,
+            min_thought_tokens=0,
+        )
+        gw = srv.create_pc2_http_server(engine, host="127.0.0.1", port=0)
+        gw_port = gw.server_address[1]
+        th = threading.Thread(target=gw.serve_forever, daemon=True)
+        th.start()
+        mode2_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "xiaofeiyu_send_bubbles",
+                    "parameters": {"type": "object", "properties": {"bubbles": {"type": "array", "items": {"type": "string"}}}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "xiaofeiyu_send_code",
+                    "parameters": {"type": "object", "properties": {"language": {"type": "string"}, "content": {"type": "string"}}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "pwsh",
+                    "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
+                },
+            },
+        ]
+        try:
+            mock.script = [
+                {"chunks": ["Send snippet and playful brat bubbles."], "stopping_word": "<channel|>", "tokens_predicted": 5},
+                {
+                    "chunks": [
+                        'call:send_code_or_doc{content:<|"|>const ok = true;<|"|>,language:<|"|>js<|"|>}<tool_call|>'
+                        '<|tool_call>'
+                    ],
+                    "stopping_word": 'call:send_message{bubbles:[<|"|>',
+                    "tokens_predicted": 12,
+                },
+                {
+                    "chunks": ['这都写不好吗<|"|>,<|"|>本小姐顺手帮你补上啦<|"|>'],
+                    "stopping_word": "]}<tool_call|>",
+                    "tokens_predicted": 10,
+                },
+                {"chunks": [""], "stopping_word": "<turn|>", "tokens_predicted": 1},
+            ]
+
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
+            req1 = {
+                "model": "xiaofeiyu-v4:brat",
+                "stream": False,
+                "messages": [{"role": "user", "content": "帮我写行 JS 顺便吐槽我两句"}],
+                "tools": mode2_tools,
+            }
+            conn.request("POST", "/v1/chat/completions", body=json.dumps(req1), headers={"Content-Type": "application/json"})
+            resp1 = conn.getresponse()
+            data1 = json.loads(resp1.read().decode("utf-8"))
+            conn.close()
+
+            self.assertEqual(resp1.status, 200)
+            msg1 = data1["choices"][0]["message"]
+            self.assertEqual(data1["choices"][0]["finish_reason"], "tool_calls")
+            self.assertIsNone(msg1["content"])
+            tcs = msg1["tool_calls"]
+            self.assertEqual(len(tcs), 2)
+            self.assertEqual(tcs[0]["function"]["name"], "xiaofeiyu_send_code")
+            self.assertEqual(json.loads(tcs[0]["function"]["arguments"]), {"language": "js", "content": "const ok = true;"})
+            self.assertEqual(tcs[1]["function"]["name"], "xiaofeiyu_send_bubbles")
+            b_args = json.loads(tcs[1]["function"]["arguments"])
+            self.assertEqual(b_args["bubbles"], ["这都写不好吗", "本小姐顺手帮你补上啦"])
+            self.assertEqual(b_args["flavor"], "brat")
+            self.assertEqual(b_args["weights"], [1.0, 0.0, 0.0, 0.85, 0.0])
+
+            # Follow-up Step 2 after DSH executes both native tools: MUST settle in 0 GPU requests!
+            calls_before = len(mock.requests)
+            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
+            req2 = {
+                "model": "xiaofeiyu-v4:brat",
+                "stream": False,
+                "messages": [
+                    {"role": "user", "content": "帮我写行 JS 顺便吐槽我两句"},
+                    msg1,
+                    {"role": "tool", "tool_call_id": tcs[0]["id"], "content": "Delivered js code card."},
+                    {"role": "tool", "tool_call_id": tcs[1]["id"], "content": "Delivered 2 chat bubbles."},
+                ],
+                "tools": mode2_tools,
+            }
+            conn.request("POST", "/v1/chat/completions", body=json.dumps(req2), headers={"Content-Type": "application/json"})
+            resp2 = conn.getresponse()
+            data2 = json.loads(resp2.read().decode("utf-8"))
+            conn.close()
+
+            self.assertEqual(resp2.status, 200)
+            self.assertEqual(data2["choices"][0]["finish_reason"], "stop")
+            self.assertIsNone(data2["choices"][0]["message"]["content"])
+            self.assertEqual(data2["choices"][0]["message"]["reasoning_content"], "已通过微信气泡送达回复。")
+            self.assertEqual(len(mock.requests), calls_before)
+
+            # Turn 2 user message: historical Mode 2 tool_calls render as canonical Gemma 4 send_message / send_code_or_doc!
+            reg = bridge.build_external_tool_registry(mode2_tools)
+            self.assertEqual([t.wire_name for t in reg.tools], ["pwsh"])
+            turn2_prompt, _ = bridge.render_gemma4_v4_prompt_with_tools(
+                [
+                    *req2["messages"],
+                    {"role": "user", "content": "再来一句"},
+                ],
+                slider_weights=(1.0, 0.0, 0.0, 0.85, 0.0),
+                registry=reg,
+            )
+            self.assertIn('call:send_code_or_doc{content:<|"|>const ok = true;<|"|>,language:<|"|>js<|"|>}', turn2_prompt)
+            self.assertIn('call:send_message{bubbles:[<|"|>这都写不好吗<|"|>,<|"|>本小姐顺手帮你补上啦<|"|>]}', turn2_prompt)
+            self.assertIn("response:send_message{delivered:true}", turn2_prompt)
+            self.assertNotIn("xiaofeiyu_send_bubbles", turn2_prompt)
+        finally:
+            gw.shutdown()
+            gw.server_close()
+            mock.close()
 
 
 if __name__ == "__main__":

@@ -123,6 +123,15 @@ export async function startLocalServer(options = {}) {
 
   let mockServer = null;
   let envOverride = options.envOverride ? { ...options.envOverride } : undefined;
+  const apiUrl = String(options.apiUrl || '').trim();
+
+  if (apiUrl && !useMock) {
+    envOverride = {
+      XFY_UPSTREAM_URLS: apiUrl,
+      ...(options.apiKey ? { XFY_SERVICE_KEY: String(options.apiKey) } : {}),
+      ...envOverride,
+    };
+  }
 
   if (useMock) {
     mockServer = startMockUpstream();
@@ -135,6 +144,10 @@ export async function startLocalServer(options = {}) {
     };
     Object.assign(process.env, envOverride);
   }
+
+  const localRateLimitOptions =
+    options.rateLimitOptions ??
+    (process.env.XFY_ENABLE_RATE_LIMIT === '1' ? undefined : { maxRequests: 600, windowMs: 60_000 });
 
   const pendingTasks = new Set();
   const context = {
@@ -157,10 +170,13 @@ export async function startLocalServer(options = {}) {
       const webReq = toWebRequest(req, bodyBuf);
 
       let webRes;
-      if (pathname === '/api/status') {
+      if (pathname === '/api/status' || pathname === '/api/cluster') {
         webRes = await statusHandler(webReq, context, { env: envOverride });
       } else if (pathname === '/api/chat') {
-        webRes = await handleChatRequest(webReq, context, { env: envOverride });
+        webRes = await handleChatRequest(webReq, context, {
+          env: envOverride,
+          rateLimitOptions: localRateLimitOptions,
+        });
       } else {
         webRes = new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Not found' } }), {
           status: 404,

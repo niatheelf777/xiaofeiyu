@@ -134,6 +134,7 @@ export function resolveUpstreamModelTag(
   requestedModel: string | undefined,
   sliderConfig: SliderInputConfig,
   runtimeMode: 'unified' | 'translator' = 'unified',
+  options: { readonly overrideModelFlavor?: boolean } = {},
 ): { readonly modelTag: string; readonly weights: SliderTuple } {
   const trimmed = (requestedModel ?? '').trim();
   if (trimmed.includes('|')) {
@@ -151,7 +152,7 @@ export function resolveUpstreamModelTag(
     }
   }
 
-  const flavorOverride = MODEL_FLAVOR_OVERRIDES[trimmed];
+  const flavorOverride = options.overrideModelFlavor ? undefined : MODEL_FLAVOR_OVERRIDES[trimmed];
   const raw = flavorOverride ?? resolveRawSlidersFromConfig(sliderConfig);
   const { weights } = computeEffectiveWeights(raw);
   const basePrefix =

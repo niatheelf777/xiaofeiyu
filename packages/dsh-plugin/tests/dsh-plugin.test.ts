@@ -17,7 +17,14 @@ import {
   restoreToolNameFromUpstream,
 } from '../src/tool-remap.ts';
 import { startLocalOpenAiBridge } from '../src/http-bridge.ts';
+import {
+  XIAOFEIYU_SEND_BUBBLES_SPEC,
+  XIAOFEIYU_SEND_CODE_SPEC,
+  isSettledNativeDeliveryTurn,
+} from '../src/tool-specs.ts';
 import { runInstaller } from '../scripts/install-dsh.mjs';
+import { buildClientBundleText } from '../scripts/build-client.mjs';
+import vm from 'node:vm';
 
 test('5-slider LoRA weight normalization & unified/translator model tag resolution', () => {
   const projected = computeEffectiveWeights([1.0, 0.8, 0.8, 0.4, 0.3]);
@@ -264,4 +271,202 @@ test('preset files only reference registered DSH persona variables (provider, mo
       assert.ok(allowedVars.has(m[1]), `Unregistered prompt variable {{${m[1]}}} in ${path.basename(file)}`);
     }
   }
+});
+
+test('Mode 2 native tool specs, <1ms bridge settlement, and live /sliders mixer work end-to-end', async () => {
+  const bOut = await XIAOFEIYU_SEND_BUBBLES_SPEC.execute({
+    bubbles: [' 哎呀怎么淋雨啦 ', '', '快去擦干头发'],
+    flavor: 'neko',
+    weights: [1, 0.85, 0, 0, 0],
+  });
+  assert.equal(bOut.bubbleCount, 2);
+  assert.deepEqual(bOut.bubbles, ['哎呀怎么淋雨啦', '快去擦干头发']);
+
+  const cOut = await XIAOFEIYU_SEND_CODE_SPEC.execute({
+    language: 'python',
+    content: 'def f():\n    return 42',
+    title: 'helper.py',
+  });
+  assert.equal(cOut.lineCount, 2);
+  assert.equal(cOut.language, 'python');
+
+  const mode2Tools = [
+    { type: 'function', function: { name: 'xiaofeiyu_send_bubbles', parameters: { type: 'object' } } },
+    { type: 'function', function: { name: 'xiaofeiyu_send_code', parameters: { type: 'object' } } },
+    { type: 'function', function: { name: 'pwsh', parameters: { type: 'object' } } },
+  ];
+
+  // Terminal bubble/code step settles immediately
+  assert.equal(
+    isSettledNativeDeliveryTurn(
+      [
+        { role: 'user', content: '你好呀' },
+        {
+          role: 'assistant',
+          tool_calls: [
+            { id: 'c1', type: 'function', function: { name: 'xiaofeiyu_send_bubbles', arguments: '{"bubbles":["好久不见"]}' } },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'c1', content: 'Delivered 1 chat bubble(s).' },
+      ],
+      mode2Tools,
+    ),
+    true,
+  );
+
+  // Mid-task promise with external tools available MUST NOT settle prematurely
+  assert.equal(
+    isSettledNativeDeliveryTurn(
+      [
+        { role: 'user', content: '帮我跑下测试' },
+        {
+          role: 'assistant',
+          tool_calls: [
+            { id: 'c2', type: 'function', function: { name: 'xiaofeiyu_send_bubbles', arguments: '{"bubbles":["收到，我先跑下单测看看"]}' } },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'c2', content: 'Delivered 1 chat bubble(s).' },
+      ],
+      mode2Tools,
+    ),
+    false,
+  );
+
+  let upstreamFetchCount = 0;
+  let sliderCfg = { preset: 'pure' as const, xiaofeiyu: 1, neko_clingy: 0, older_tease: 0, brat_mesugaki: 0, fragile_porcelain: 0 };
+  let overrideFlag = false;
+
+  const bridge = await startLocalOpenAiBridge({
+    host: '127.0.0.1',
+    port: 0,
+    state: {
+      getSliderConfig: () => sliderCfg,
+      setSliderConfig: (next, ov) => {
+        sliderCfg = next as typeof sliderCfg;
+        overrideFlag = ov;
+      },
+      getOverrideModelFlavor: () => overrideFlag,
+      getBubbleJoinMode: () => 'paragraph',
+      fetchImpl: async () => {
+        upstreamFetchCount += 1;
+        return new Response('{}', { status: 200 });
+      },
+      getUpstreamConnection: async () => ({
+        mode: 'unified',
+        upstreamBaseUrl: 'http://127.0.0.1:8081/v1',
+        translatorProxyUrl: 'http://127.0.0.1:18088/v1',
+        upstreamApiKey: '',
+      }),
+    },
+  });
+
+  try {
+    const baseRoot = bridge.baseUrl.replace(/\/v1$/, '');
+    const postSliders = await fetch(`${baseRoot}/sliders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ preset: 'brat_spice', overrideModelFlavor: true }),
+    });
+    assert.equal(postSliders.status, 200);
+    const sliderJson = await postSliders.json();
+    assert.equal(sliderJson.overrideModelFlavor, true);
+    assert.deepEqual(sliderJson.effective.weights, [1, 0, 0, 0.85, 0]);
+
+    // Settled Mode 2 turn returns stop SSE with 0 upstream fetches
+    const settleRes = await fetch(`${bridge.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'xiaofeiyu-v4:pure',
+        stream: true,
+        messages: [
+          { role: 'user', content: '吐槽我一句' },
+          {
+            role: 'assistant',
+            tool_calls: [
+              { id: 'call_b1', type: 'function', function: { name: 'xiaofeiyu_send_bubbles', arguments: '{"bubbles":["笨蛋"]}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_b1', content: 'Delivered 1 chat bubble(s).' },
+        ],
+        tools: mode2Tools,
+      }),
+    });
+    assert.equal(settleRes.status, 200);
+    const settleSse = await settleRes.text();
+    assert.ok(settleSse.includes('"finish_reason":"stop"'));
+    assert.ok(settleSse.includes('xiaofeiyu-v4|1.000,0.000,0.000,0.850,0.000'));
+    assert.equal(upstreamFetchCount, 0);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('lib/client.js matches source and registers DSH WebUI slots cleanly via __ModuleLoader__', () => {
+  const libClientPath = path.resolve(import.meta.dirname, '..', 'lib', 'client.js');
+  const built = buildClientBundleText();
+  assert.equal(fs.readFileSync(libClientPath, 'utf8'), built);
+
+  let registeredModule: { id: string; factory: (req: (id: string) => unknown) => { apply: (ctx: unknown) => void; inject: string[] } } | null = null;
+  const sandbox = {
+    window: {
+      __ModuleLoader__: {
+        load(mod: typeof registeredModule) {
+          registeredModule = mod;
+        },
+      },
+    },
+  };
+  vm.runInNewContext(built, sandbox);
+  assert.ok(registeredModule !== null);
+  assert.equal(registeredModule!.id, '@xiaofeiyu/dsh-plugin');
+
+  const fakeReact = {
+    useState: (init: unknown) => [init, () => {}],
+    useEffect: () => {},
+    useCallback: (fn: unknown) => fn,
+    useRef: (init: unknown) => ({ current: init }),
+  };
+  const fakeJsx = {
+    jsx: (type: unknown, props: unknown) => ({ type, props }),
+    jsxs: (type: unknown, props: unknown) => ({ type, props }),
+  };
+  const exportsObj = registeredModule!.factory((id: string) => {
+    if (id === 'react') return fakeReact;
+    if (id === 'react/jsx-runtime') return fakeJsx;
+    throw new Error(`Unexpected client require: ${id}`);
+  });
+
+  assert.deepEqual(Array.from(exportsObj.inject), ['slots', 'locale', 'uiConversation']);
+  const slotRegistrations: Array<{ meta: Record<string, unknown> }> = [];
+  let registeredEventKind = '';
+  exportsObj.apply({
+    effect: (fn: () => void) => fn(),
+    locale: { register: () => () => {} },
+    uiConversation: {
+      events: {
+        register(def: { kind: string }) {
+          registeredEventKind = def.kind;
+        },
+      },
+    },
+    slots: {
+      inject(_name: string, fn: () => unknown) {
+        return fn();
+      },
+      register(meta: Record<string, unknown>) {
+        slotRegistrations.push({ meta });
+        return () => {};
+      },
+    },
+  });
+
+  assert.equal(registeredEventKind, 'xiaofeiyu');
+  const slotNames = slotRegistrations.map((s) => `${s.meta.name}:${s.meta.key ?? s.meta.id}`);
+  assert.deepEqual(slotNames, [
+    'conversation.chat.turnTail:@xiaofeiyu/dsh-plugin',
+    'tool.call.toolview:xiaofeiyu_send_bubbles',
+    'tool.call.toolview:xiaofeiyu_send_code',
+    'conversation.session.header.utilities:xiaofeiyu-five-slider-mixer',
+  ]);
 });

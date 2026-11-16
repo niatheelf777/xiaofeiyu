@@ -9,6 +9,8 @@ venv/
 # Node / TypeScript
 node_modules/
 lib/
+!packages/dsh-plugin/lib/
+!packages/dsh-plugin/lib/client.js
 dist/
 *.tsbuildinfo
 

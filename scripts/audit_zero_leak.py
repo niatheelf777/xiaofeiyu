@@ -44,6 +44,7 @@ ALLOWED_PUBLIC_DOMAINS = frozenset(
         "huggingface.co",
         "cdn-lfs.huggingface.co",
         "github.com",
+        "api.github.com",
         "raw.githubusercontent.com",
         "arxiv.org",
         "aclanthology.org",

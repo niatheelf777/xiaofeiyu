@@ -1,24 +1,28 @@
 # `@xiaofeiyu/dsh-plugin`
 
-DSH (`@deepseek-ai/dsh`) plugin and loopback OpenAI bridge for Xiaofeiyu:
+DeepSeek Harness (`@deepseek-ai/dsh`) plugin, native bubble/code delivery tools, WebUI 5-slider mixer, and loopback OpenAI bridge (`127.0.0.1:18964/v1`) for Xiaofeiyu.
 
-1. **Unified Mode & E4B Translator Mode**: Switch seamlessly between direct unified Split-Phase servers (`xiaofeiyu-26b-a4b` / `xiaofeiyu-v4`) and the `@xiaofeiyu/openai-voice-proxy` E4B translator sidecar (`xiaofeiyu-translator-e4b-v1`).
-2. **Real-Time 5-Slider Mixing**: Projects `xiaofeiyu` + `neko_clingy`, `older_tease`, `brat_mesugaki`, `fragile_porcelain` with $L_1 \le 1.15$ budget clamping.
-3. **`send_message` & Proxy Schema Remapping**: Remaps external subagent `send_message` <-> `agent_send_message` and proxy-restricted parameter keys (`file` <-> `target_path`, `bytes` <-> `byte_count`, etc.) losslessly, and strips orphaned non-escalating `justification` fields while leaving Bilibili (`dsh-bili-eyes`), web (`dsh-tool-web`), and filesystem tools intact.
-4. **Zero-Config `llm-pi-ai` Route & Engineering Preset**: Automatically registers the `xiaofeiyu` OpenAI-completions provider (`http://127.0.0.1:18964/v1`) and the `xiaofeiyu` agent preset (`persona` + `tool-fs` + `tool-fs-search` + `tool-pwsh`/`tool-bash` + `tool-todo` + `tool-web` + `compaction`, without subagent `send_message` collisions).
+## Dual-Mode DSH Compatibility
 
-## Usage
+1. **Mode 1 — Standard Zero-Plugin OpenAI API (`:8081/v1`)**: Any stock DSH profile (including `标准模式`) or OpenAI-compatible client can talk directly to `pc2_split_phase_server.py` without loading `tool-xiaofeiyu`. Phase B bubbles and Phase A code blocks unwrap cleanly into `assistant.content` while multi-hop filesystem, shell, and web tools execute normally.
+2. **Mode 2 — Full `@xiaofeiyu/dsh-plugin` Experience (`小肥鱼 (Xiaofeiyu v4)` preset)**:
+   - **Collision-Free Native Delivery Tools (`@xiaofeiyu/dsh-plugin/tools`)**: Registers `xiaofeiyu_send_bubbles` and `xiaofeiyu_send_code` via `@deepseek-ai/dsh-tools`, leaving DSH's subagent `send_message` (`agent_send_message`), Bilibili, web, and filesystem tools untouched.
+   - **Tactile IM Bubbles & Code Cards (`@xiaofeiyu/dsh-plugin/client`)**: Renders multi-bubble chat bursts, active 5-slider weight badges, and copyable code/diff cards permanently in the main conversation flow (`conversation.chat.turnTail`) plus compact trajectory rows (`tool.call.toolview`).
+   - **Zero-Extra-GPU Settlement**: Terminal bubble/code delivery turns settle locally in `<1 ms` with zero extra GPU requests and zero duplicate assistant prose.
+   - **Live 5-Slider Header Mixer**: Adds a real-time 5-slider popover (`conversation.session.header.utilities`) synced to `http://127.0.0.1:18964/sliders` with $L_1 \le 1.15$ budget clamping across both Unified (`12B` / `26B-A4B`) and `E4B` Translator modes.
+
+## Install & Verify
 
 ```bash
-# Preview install into DSH web profile
-node scripts/install-dsh.mjs --dry-run --profile web
+# Preview changes without modifying your DSH home
+node packages/dsh-plugin/scripts/install-dsh.mjs --dry-run --profile web
 
-# Apply install
-node scripts/install-dsh.mjs --apply --profile web
+# Install into DSH web profile (default upstream http://127.0.0.1:8081/v1)
+node packages/dsh-plugin/scripts/install-dsh.mjs --apply --profile web --upstream-base http://127.0.0.1:8081/v1
 
-# Restore original profile byte-for-byte
-node scripts/install-dsh.mjs --uninstall --profile web
+# Restore your original DSH profile byte-for-byte
+node packages/dsh-plugin/scripts/install-dsh.mjs --uninstall --profile web
 
-# Run unit tests
-npm test
+# Rebuild WebUI client bundle & run unit tests
+npm --prefix packages/dsh-plugin test
 ```

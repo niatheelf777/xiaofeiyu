@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { writeClientBundle } from './build-client.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -205,6 +206,9 @@ export function runInstaller(options) {
   );
 
   if (mode === 'apply') {
+    if (pluginRoot === PLUGIN_ROOT && !fs.existsSync(path.join(pluginRoot, 'lib', 'client.js'))) {
+      writeClientBundle();
+    }
     if (!fs.existsSync(backupFile)) {
       fs.mkdirSync(backupDir, { recursive: true });
       const tracked = [

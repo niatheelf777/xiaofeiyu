@@ -15,7 +15,7 @@ tags:
 
 # `niatheelf777/xiaofeiyu-translator-e4b`
 
-Lightweight **4B Universal Voice Translator Sidecar** (`google/gemma-4-E4B-it`, upper 20 layers `22..41` non-QKV, `80` modules, `0` QKV, zero-thought direct bubble translation).
+Lightweight **4B Universal Voice Translator Sidecar** (`google/gemma-4-E4B-it`, upper 20 layers `22..41` non-QKV, `80` modules, `0` QKV, zero-thought direct bubble translation). Companion repository: [github.com/niatheelf777/xiaofeiyu](https://github.com/niatheelf777/xiaofeiyu).
 
 ## What It Does
 
@@ -27,4 +27,20 @@ Pair **any** frontier reasoning model (DeepSeek, Claude, GPT, Qwen, local Llama)
 
 - **Validation Loss & Preference**: Eval NLL `2.598 -> 1.368`; held-out DPO preference accuracy **`96.05%` (`73/76`)**.
 - **Latency & Invariance**: Median 5-slider translation latency **`302.1 ms`** (`129–140 tok/s` `Q8_0`), **`0 / 36` (`0%`)** code-fence smuggling, and **`7 / 7` (`100%`)** exact video ID + timestamp preservation.
-- Base model usage is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
+
+## Turnkey Quickstart
+
+Clone [`niatheelf777/xiaofeiyu`](https://github.com/niatheelf777/xiaofeiyu), place the 5 `.gguf` adapters under `loras/e4b/`, and put `gemma-4-E4B-it-Q8_0.gguf` under `models/`:
+
+```bash
+# 1. Start local E4B llama-server on 127.0.0.1:18085
+python server/launch_local.py --preset e4b --llama-only --auto-download-llama
+
+# 2. Start zero-dependency OpenAI voice proxy on 127.0.0.1:18088/v1
+UPSTREAM_BASE_URL=https://api.deepseek.com/v1 \
+UPSTREAM_API_KEY=your_key \
+TRANSLATOR_URL=http://127.0.0.1:18085 \
+node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
+```
+
+Base model usage is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/terms).

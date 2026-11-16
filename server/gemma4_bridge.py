@@ -219,12 +219,21 @@ class ExternalToolSpec:
     parameters: dict[str, Any]
 
 
+NATIVE_BUBBLE_WIRE_NAMES: frozenset[str] = frozenset({"xiaofeiyu_send_bubbles", "send_bubbles"})
+NATIVE_CODE_WIRE_NAMES: frozenset[str] = frozenset({"xiaofeiyu_send_code"})
+ALL_NATIVE_DELIVERY_WIRE_NAMES: frozenset[str] = NATIVE_BUBBLE_WIRE_NAMES | NATIVE_CODE_WIRE_NAMES
+_MIDTASK_PROMISE_RE = re.compile(r"(?:这就去|先跑|先看|我先|先帮你|我看看咯|等我先|先去查)")
+_TASK_DONE_RE = re.compile(r"(?:全绿|通过|修好|改好|搞定|完成|加好|写好|弄好)")
+
+
 @dataclass
 class ExternalToolRegistry:
     tools: list[ExternalToolSpec] = field(default_factory=list)
     wire_to_gemma: dict[str, str] = field(default_factory=dict)
     gemma_to_wire: dict[str, str] = field(default_factory=dict)
     by_gemma_name: dict[str, ExternalToolSpec] = field(default_factory=dict)
+    native_bubble_wire_name: str | None = None
+    native_code_wire_name: str | None = None
 
     @property
     def has_external_tools(self) -> bool:
@@ -236,6 +245,10 @@ class ExternalToolRegistry:
     def to_gemma_name(self, wire_name: str) -> str:
         if wire_name in self.wire_to_gemma:
             return self.wire_to_gemma[wire_name]
+        if wire_name in NATIVE_BUBBLE_WIRE_NAMES:
+            return "send_message"
+        if wire_name in NATIVE_CODE_WIRE_NAMES:
+            return "send_code_or_doc"
         return DEFAULT_COLLISION_ALIASES.get(wire_name, wire_name)
 
     def to_wire_name(self, gemma_name: str) -> str:
@@ -273,6 +286,15 @@ def build_external_tool_registry(
         fn_obj = raw_entry.get("function") if isinstance(raw_entry.get("function"), dict) else raw_entry
         wire_name = str(fn_obj.get("name") or "").strip()
         if not wire_name or wire_name in reg.wire_to_gemma:
+            continue
+
+        if wire_name in NATIVE_BUBBLE_WIRE_NAMES:
+            reg.native_bubble_wire_name = wire_name
+            reg.wire_to_gemma[wire_name] = "send_message"
+            continue
+        if wire_name in NATIVE_CODE_WIRE_NAMES:
+            reg.native_code_wire_name = wire_name
+            reg.wire_to_gemma[wire_name] = "send_code_or_doc"
             continue
 
         gemma_name = _allocate_safe_gemma_name(wire_name, used_gemma_names)
@@ -912,9 +934,17 @@ def render_gemma4_v4_prompt_with_tools(
                             call_id_to_wire_name[tc_id] = w_name
                         pending_wire_names.append(w_name)
                         g_name = reg.to_gemma_name(w_name)
-                        step_calls.append(
-                            format_gemma4_tool_call_block(g_name, _deserialize_openai_tool_args(fn.get("arguments")))
-                        )
+                        parsed_tc_args = _deserialize_openai_tool_args(fn.get("arguments"))
+                        if g_name == "send_message":
+                            raw_b = parsed_tc_args.get("bubbles")
+                            clean_b = [str(x).strip() for x in raw_b if str(x).strip()] if isinstance(raw_b, list) else []
+                            parsed_tc_args = {"bubbles": clean_b}
+                        elif g_name == "send_code_or_doc":
+                            parsed_tc_args = {
+                                "language": str(parsed_tc_args.get("language") or "text"),
+                                "content": str(parsed_tc_args.get("content") or ""),
+                            }
+                        step_calls.append(format_gemma4_tool_call_block(g_name, parsed_tc_args))
                     i += 1
 
                 resp_idx = 0
@@ -931,9 +961,12 @@ def render_gemma4_v4_prompt_with_tools(
                         else:
                             raw_name = "tool"
                     g_name = reg.to_gemma_name(raw_name)
-                    step_resps.append(
-                        format_gemma4_tool_response_block(g_name, strip_protocol_tokens(t_txt).strip("\r\n"))
-                    )
+                    if g_name in ("send_message", "send_code_or_doc"):
+                        step_resps.append(format_gemma4_tool_response_block(g_name, {"delivered": True}))
+                    else:
+                        step_resps.append(
+                            format_gemma4_tool_response_block(g_name, strip_protocol_tokens(t_txt).strip("\r\n"))
+                        )
                     resp_idx += 1
                     i += 1
 
@@ -1172,3 +1205,80 @@ def make_openai_tool_completion_payload(
 
 def make_error_payload(message: str, err_type: str = "invalid_request_error", code: str = "bad_request") -> dict:
     return {"error": {"message": message, "type": err_type, "code": code}}
+
+
+def describe_weight_flavor(weights: tuple[float, ...] | list[float] | None) -> str:
+    if not weights or len(weights) < 5:
+        return "pure"
+    c_vals = [float(weights[1]), float(weights[2]), float(weights[3]), float(weights[4])]
+    top_val = max(c_vals)
+    if top_val < 0.08:
+        return "pure"
+    active_count = sum(1 for v in c_vals if v >= 0.25)
+    if active_count >= 2:
+        return "mix"
+    names = ("neko", "tease", "brat", "fragile")
+    return names[c_vals.index(top_val)]
+
+
+def is_settled_native_delivery_turn(
+    messages: list[dict[str, Any]],
+    *,
+    native_wire_names: frozenset[str] = ALL_NATIVE_DELIVERY_WIRE_NAMES,
+    has_external_tools: bool = False,
+) -> bool:
+    """Return True when the latest assistant step ONLY called native bubble/code delivery tools and settled cleanly."""
+    if not messages or not native_wire_names:
+        return False
+    idx = len(messages) - 1
+    tool_msgs: list[dict[str, Any]] = []
+    while idx >= 0 and str(messages[idx].get("role") or "").strip().lower() == "tool":
+        tool_msgs.append(messages[idx])
+        idx -= 1
+    if not tool_msgs or idx < 0:
+        return False
+
+    parent = messages[idx]
+    if str(parent.get("role") or "").strip().lower() not in ("assistant", "model"):
+        return False
+    tcs = parent.get("tool_calls")
+    if not isinstance(tcs, list) or len(tcs) == 0:
+        return False
+
+    spoken_texts: list[str] = []
+    expected_ids: set[str] = set()
+    for tc in tcs:
+        if not isinstance(tc, dict):
+            return False
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        w_name = str(fn.get("name") or "").strip()
+        if w_name not in native_wire_names:
+            return False
+        tc_id = str(tc.get("id") or "").strip()
+        if tc_id:
+            expected_ids.add(tc_id)
+        if w_name in NATIVE_BUBBLE_WIRE_NAMES:
+            args_dict = _deserialize_openai_tool_args(fn.get("arguments"))
+            raw_b = args_dict.get("bubbles")
+            if isinstance(raw_b, list):
+                spoken_texts.extend(str(x) for x in raw_b if x)
+
+    settled_ids: set[str] = set()
+    for tm in tool_msgs:
+        tm_id = str(tm.get("tool_call_id") or "").strip()
+        if tm_id:
+            settled_ids.add(tm_id)
+        txt, _ = extract_message_content_and_media(tm.get("content"))
+        if txt.lstrip().startswith(("Error:", '{"error"')):
+            return False
+
+    if expected_ids and not expected_ids.issubset(settled_ids):
+        return False
+
+    if has_external_tools and spoken_texts:
+        joined_spoken = "".join(spoken_texts)
+        if _MIDTASK_PROMISE_RE.search(joined_spoken) and not _TASK_DONE_RE.search(joined_spoken):
+            return False
+
+    return True
+

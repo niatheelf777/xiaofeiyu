@@ -47,6 +47,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from gemma4_bridge import (  # noqa: E402
+    ALL_NATIVE_DELIVERY_WIRE_NAMES,
     CHANNEL_CLOSE_ID,
     CHANNEL_CLOSE_STR,
     CHANNEL_OPEN_ID,
@@ -72,6 +73,8 @@ from gemma4_bridge import (  # noqa: E402
     OpenAIToolCallOut,
     StreamStep,
     build_external_tool_registry,
+    describe_weight_flavor,
+    is_settled_native_delivery_turn,
     make_chunk_payload,
     make_completion_payload,
     make_error_payload,
@@ -82,6 +85,13 @@ from gemma4_bridge import (  # noqa: E402
     render_gemma4_v4_prompt_with_tools,
     run_calc_python_sandbox,
 )
+from local_webui import (  # noqa: E402
+    build_local_status_payload,
+    default_web_public_dir,
+    handle_web_chat_post,
+    resolve_static_asset,
+)
+from urllib.parse import urlparse  # noqa: E402
 
 FIVE_CARTRIDGE_FILENAMES: tuple[str, ...] = (
     "s0_xiaofeiyu_backbone.gguf",
@@ -650,6 +660,51 @@ class LlamaCppPC2Engine:
         effective_messages: list[dict] = sanitize_public_safe_messages(messages) if self.public_safe else list(messages)
 
         tool_registry = build_external_tool_registry(effective_tools)
+        native_bubble_wire = None if self.public_safe else tool_registry.native_bubble_wire_name
+        native_code_wire = None if self.public_safe else tool_registry.native_code_wire_name
+
+        max_visible = (
+            max(PUBLIC_SAFE_MIN_MAX_TOKENS, min(int(max_tokens or PUBLIC_SAFE_MAX_MAX_TOKENS), PUBLIC_SAFE_MAX_MAX_TOKENS))
+            if self.public_safe
+            else max(1, min(int(max_tokens or 2048), 8192))
+        )
+
+        if native_bubble_wire and is_settled_native_delivery_turn(
+            effective_messages,
+            native_wire_names=ALL_NATIVE_DELIVERY_WIRE_NAMES,
+            has_external_tools=tool_registry.has_external_tools,
+        ):
+            class _NoopLease:
+                slot_id = -1
+
+                def release(self) -> None:
+                    return
+
+            settled_telemetry: dict[str, Any] = {
+                "slot_id": -1,
+                "slot_wait_ms": 0.0,
+                "model_tag": canonical_tag,
+                "slider_weights": list(user_weights),
+                "prompt_tokens": 0,
+                "predicted_tokens": 0,
+                "visible_chars": 0,
+                "prefill_ms": 0.0,
+                "decode_ms": 0.0,
+                "ttft_ms": 0.0,
+                "total_ms": 0.0,
+                "decode_tok_s": 0.0,
+                "settled_native_delivery": True,
+            }
+            settled_iter = _ManagedStreamIterator(
+                iter([StreamStep(delta_text="", token_id=TURN_END_ID, finish_reason="stop")]),
+                _NoopLease(),
+                settled_telemetry,
+                sanitized_messages=effective_messages,
+                effective_weights=user_weights,
+                effective_max_tokens=max_visible,
+            )
+            return canonical_tag, 0, settled_iter
+
         prompt_text, tool_registry = render_gemma4_v4_prompt_with_tools(
             effective_messages,
             slider_weights=user_weights,
@@ -664,11 +719,6 @@ class LlamaCppPC2Engine:
                 f"prompt_tokens ({len(prompt_ids)}) exceeds slot context window ({self.slot_ctx_size} - 256); context_length_exceeded"
             )
 
-        max_visible = (
-            max(PUBLIC_SAFE_MIN_MAX_TOKENS, min(int(max_tokens or PUBLIC_SAFE_MAX_MAX_TOKENS), PUBLIC_SAFE_MAX_MAX_TOKENS))
-            if self.public_safe
-            else max(1, min(int(max_tokens or 2048), 8192))
-        )
         temp = float(temperature) if temperature is not None else 0.85
         tp = float(top_p) if top_p is not None else 0.95
 
@@ -708,6 +758,49 @@ class LlamaCppPC2Engine:
                 send_message_bubbles_total = 0
                 last_calc_stdout = ""
                 visible_chars_emitted = 0
+                native_delivery_calls: list[OpenAIToolCallOut] = []
+                flavor_tag = describe_weight_flavor(user_weights)
+                rounded_weights = [round(float(w), 3) for w in user_weights]
+
+                def _record_native_bubbles(raw_bubbles: list[str]) -> None:
+                    if not native_bubble_wire:
+                        return
+                    clean_b = [str(b).strip() for b in raw_bubbles if str(b).strip()]
+                    if not clean_b:
+                        return
+                    payload = {
+                        "bubbles": clean_b,
+                        "flavor": flavor_tag,
+                        "weights": rounded_weights,
+                    }
+                    native_delivery_calls.append(
+                        OpenAIToolCallOut(
+                            id=f"call_{secrets.token_hex(12)}",
+                            wire_name=native_bubble_wire,
+                            gemma_name="send_message",
+                            arguments_dict=payload,
+                            arguments_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                        )
+                    )
+
+                def _record_native_code(lang: str, code_body: str) -> None:
+                    if not native_bubble_wire:
+                        return
+                    clean_lang = lang or "text"
+                    if native_code_wire:
+                        payload = {"language": clean_lang, "content": code_body}
+                        native_delivery_calls.append(
+                            OpenAIToolCallOut(
+                                id=f"call_{secrets.token_hex(12)}",
+                                wire_name=native_code_wire,
+                                gemma_name="send_code_or_doc",
+                                arguments_dict=payload,
+                                arguments_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                            )
+                        )
+                    else:
+                        fenced = f"```{clean_lang}\n{code_body}\n```"
+                        _record_native_bubbles([fenced])
 
                 def _record_first_visible() -> None:
                     nonlocal ttft_ms
@@ -818,40 +911,45 @@ class LlamaCppPC2Engine:
                             if piece:
                                 a1_chunks.append(piece)
                                 post_now = seg_open_prefix + "".join(a1_chunks)
-                                if not code_closed:
+                                if not native_bubble_wire and not code_closed:
                                     m_code = CODE_CONTENT_OPEN_RE.search(post_now)
                                     if m_code:
                                         lang_tag = (m_code.group(1) or "").strip()
                                         tail_body = m_code.group(2)
-                                        if not code_opened and (len(tail_body) >= 4 or QUOTE_STR in tail_body):
-                                            prefix = "\n" if visible_blocks_emitted > 0 else ""
-                                            code_wrapped = bool(lang_tag) and not tail_body.lstrip().startswith("```")
-                                            open_delta = f"{prefix}```{lang_tag}\n" if code_wrapped else prefix
-                                            if open_delta:
-                                                _record_first_visible()
-                                                visible_chars_emitted += len(open_delta)
-                                                yield StreamStep(delta_text=open_delta, token_id=QUOTE_DELIM_ID)
-                                            code_opened = True
-                                        if code_opened:
-                                            if QUOTE_STR in tail_body:
-                                                code_complete, _ = tail_body.split(QUOTE_STR, 1)
-                                                rem = code_complete[code_emitted:]
-                                                nl_end = "" if code_complete.endswith("\n") else "\n"
-                                                close_delta = f"{rem}{nl_end}```" if code_wrapped else rem.rstrip("\r\n")
-                                                if close_delta:
+                                        if lang_tag:
+                                            if not code_opened and (len(tail_body) >= 4 or QUOTE_STR in tail_body):
+                                                prefix = "\n" if visible_blocks_emitted > 0 else ""
+                                                code_wrapped = not tail_body.lstrip().startswith("```")
+                                                open_delta = f"{prefix}```{lang_tag}\n" if code_wrapped else prefix
+                                                if open_delta:
                                                     _record_first_visible()
-                                                    visible_chars_emitted += len(close_delta)
-                                                    yield StreamStep(delta_text=close_delta, token_id=TOOL_CALL_CLOSE_ID)
-                                                code_closed = True
-                                                visible_blocks_emitted += 1
-                                            else:
-                                                safe_code, _ = _hold_partial_tag_suffix(tail_body, QUOTE_STR)
-                                                delta_code = safe_code[code_emitted:]
-                                                if delta_code:
-                                                    _record_first_visible()
-                                                    code_emitted = len(safe_code)
-                                                    visible_chars_emitted += len(delta_code)
-                                                    yield StreamStep(delta_text=delta_code, token_id=NEWLINE_ID)
+                                                    visible_chars_emitted += len(open_delta)
+                                                    yield StreamStep(delta_text=open_delta, token_id=QUOTE_DELIM_ID)
+                                                code_opened = True
+                                            if code_opened:
+                                                if QUOTE_STR in tail_body:
+                                                    code_complete, _ = tail_body.split(QUOTE_STR, 1)
+                                                    rem = code_complete[code_emitted:]
+                                                    nl_end = "" if code_complete.endswith("\n") else "\n"
+                                                    close_delta = (
+                                                        f"{rem}{nl_end}```" if code_wrapped else rem.rstrip("\r\n")
+                                                    )
+                                                    if close_delta:
+                                                        _record_first_visible()
+                                                        visible_chars_emitted += len(close_delta)
+                                                        yield StreamStep(
+                                                            delta_text=close_delta, token_id=TOOL_CALL_CLOSE_ID
+                                                        )
+                                                    code_closed = True
+                                                    visible_blocks_emitted += 1
+                                                else:
+                                                    safe_code, _ = _hold_partial_tag_suffix(tail_body, QUOTE_STR)
+                                                    delta_code = safe_code[code_emitted:]
+                                                    if delta_code:
+                                                        _record_first_visible()
+                                                        code_emitted = len(safe_code)
+                                                        visible_chars_emitted += len(delta_code)
+                                                        yield StreamStep(delta_text=delta_code, token_id=NEWLINE_ID)
                             if done_res is not None:
                                 a1_final = done_res
 
@@ -871,20 +969,36 @@ class LlamaCppPC2Engine:
                             if t_name == "send_code_or_doc" and not code_opened:
                                 lang = re.sub(r"[^a-zA-Z0-9_+#.-]", "", str(t_args.get("language") or "").strip())
                                 body = str(t_args.get("content") or "").rstrip("\r\n")
-                                prefix = "\n" if visible_blocks_emitted > 0 else ""
-                                blk = f"{prefix}```{lang}\n{body}\n```" if lang else f"{prefix}{body}"
                                 _record_first_visible()
-                                visible_chars_emitted += len(blk)
-                                yield StreamStep(delta_text=blk, token_id=TOOL_CALL_CLOSE_ID)
+                                if native_bubble_wire:
+                                    visible_chars_emitted += len(body)
+                                    _record_native_code(lang, body)
+                                else:
+                                    prefix = "\n" if visible_blocks_emitted > 0 else ""
+                                    code_wrapped = not body.lstrip().startswith("```")
+                                    blk = f"{prefix}```{lang}\n{body}\n```" if code_wrapped else f"{prefix}{body}"
+                                    visible_chars_emitted += len(blk)
+                                    yield StreamStep(delta_text=blk, token_id=TOOL_CALL_CLOSE_ID)
                                 visible_blocks_emitted += 1
                             elif t_name == "send_message":
-                                for b_txt in t_args.get("bubbles") or []:
-                                    prefix = "\n" if visible_blocks_emitted > 0 else ""
-                                    _record_first_visible()
-                                    visible_chars_emitted += len(prefix) + len(str(b_txt))
-                                    yield StreamStep(delta_text=prefix + str(b_txt), token_id=QUOTE_DELIM_ID)
-                                    visible_blocks_emitted += 1
-                                    send_message_bubbles_total += 1
+                                raw_seg_bubbles = [str(b).strip() for b in (t_args.get("bubbles") or []) if str(b).strip()]
+                                if native_bubble_wire:
+                                    if raw_seg_bubbles:
+                                        _record_first_visible()
+                                        joined_seg = "\n".join(raw_seg_bubbles)
+                                        visible_chars_emitted += len(joined_seg)
+                                        hop_spoken_chunks.append(joined_seg)
+                                        _record_native_bubbles(raw_seg_bubbles)
+                                        visible_blocks_emitted += len(raw_seg_bubbles)
+                                        send_message_bubbles_total += len(raw_seg_bubbles)
+                                else:
+                                    for b_txt in raw_seg_bubbles:
+                                        prefix = "\n" if visible_blocks_emitted > 0 else ""
+                                        _record_first_visible()
+                                        visible_chars_emitted += len(prefix) + len(str(b_txt))
+                                        yield StreamStep(delta_text=prefix + str(b_txt), token_id=QUOTE_DELIM_ID)
+                                        visible_blocks_emitted += 1
+                                        send_message_bubbles_total += 1
 
                         if stop_word in SEND_MSG_STOP_VARIANTS:
                             hop_completed_calls.append(("send_message", {}))
@@ -915,7 +1029,8 @@ class LlamaCppPC2Engine:
                                         _record_first_visible()
                                         visible_chars_emitted += len(delta_str)
                                         hop_spoken_chunks.append(delta_str)
-                                        yield StreamStep(delta_text=delta_str, token_id=QUOTE_DELIM_ID)
+                                        if not native_bubble_wire:
+                                            yield StreamStep(delta_text=delta_str, token_id=QUOTE_DELIM_ID)
                                 if b_done is not None:
                                     b_final = b_done
 
@@ -923,7 +1038,11 @@ class LlamaCppPC2Engine:
                                 _record_first_visible()
                                 visible_chars_emitted += len(tail_str)
                                 hop_spoken_chunks.append(tail_str)
-                                yield StreamStep(delta_text=tail_str, token_id=QUOTE_DELIM_ID)
+                                if not native_bubble_wire:
+                                    yield StreamStep(delta_text=tail_str, token_id=QUOTE_DELIM_ID)
+
+                            if native_bubble_wire and b_parser.completed_bubbles:
+                                _record_native_bubbles(b_parser.completed_bubbles)
 
                             visible_blocks_emitted = b_parser.visible_blocks_emitted
                             send_message_bubbles_total += b_parser.bubbles_emitted
@@ -958,7 +1077,7 @@ class LlamaCppPC2Engine:
                             delta_text="",
                             token_id=TURN_END_ID,
                             finish_reason="tool_calls",
-                            external_tool_calls=external_calls,
+                            external_tool_calls=[*native_delivery_calls, *external_calls],
                         )
                         return
 
@@ -980,23 +1099,35 @@ class LlamaCppPC2Engine:
                         cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
                         continue
 
-                    # Safety net: if Phase A planned an external tool call in `<|channel>thought`,
-                    # emitted an opening `send_message` preamble bubble first, and stopped at
-                    # `<|tool_response>` waiting for `send_message` acknowledgment, feed the
-                    # synthetic delivery receipt once so Phase A immediately emits the external tool call.
+                    # Safety net: if Phase A planned an external tool call or `send_code_or_doc` in
+                    # `<|channel>thought`, emitted an opening `send_message` preamble bubble first, and
+                    # stopped at `<|tool_response>` waiting for `send_message` acknowledgment, feed the
+                    # synthetic delivery receipt once so Phase A immediately emits the remaining call.
+                    has_code_call = any(t_name == "send_code_or_doc" for t_name, _ in hop_completed_calls)
+                    planned_missing_code = ("send_code_or_doc" in t_final.content) and not has_code_call
                     if (
-                        not self.public_safe
-                        and hop_idx == 0
+                        hop_idx == 0
                         and (hop_idx + 1) < self.max_tool_hops
                         and not hop_hit_length_limit
-                        and bool(tool_registry.tools)
                         and resp_blocks
                     ):
                         spoken_txt = "".join(hop_spoken_chunks)
-                        is_midtask_promise = bool(
-                            re.search(r"(?:这就去|先跑|先看|我先|先帮你|我看看咯|等我先|先去查)", spoken_txt)
-                        ) and not bool(re.search(r"(?:全绿|通过|修好|改好|搞定|完成|加好|写好|弄好)", spoken_txt))
-                        if is_midtask_promise:
+                        is_midtask_promise = (
+                            not self.public_safe
+                            and bool(tool_registry.tools)
+                            and bool(re.search(r"(?:这就去|先跑|先看|我先|先帮你|我看看咯|等我先|先去查)", spoken_txt))
+                            and not bool(re.search(r"(?:全绿|通过|修好|改好|搞定|完成|加好|写好|弄好)", spoken_txt))
+                        )
+                        is_code_intro_without_code = planned_missing_code or (
+                            not has_code_call
+                            and bool(
+                                re.search(
+                                    r"(?:写得对不对|代码如下|给你写好|看下代码|函数写好|脚本写好|写了个)",
+                                    spoken_txt,
+                                )
+                            )
+                        )
+                        if is_midtask_promise or is_code_intro_without_code:
                             cur_prompt_text += "".join(resp_blocks) + "<|channel>thought\n"
                             cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
                             continue
@@ -1004,13 +1135,36 @@ class LlamaCppPC2Engine:
                     if visible_blocks_emitted == 0 and last_calc_stdout:
                         _record_first_visible()
                         visible_chars_emitted += len(last_calc_stdout)
-                        yield StreamStep(delta_text=last_calc_stdout, token_id=TURN_END_ID)
+                        if native_bubble_wire:
+                            _record_native_bubbles([last_calc_stdout])
+                        else:
+                            yield StreamStep(delta_text=last_calc_stdout, token_id=TURN_END_ID)
+
+                    if native_delivery_calls:
+                        _finalize_telemetry()
+                        yield BridgeStreamStep(
+                            delta_text="",
+                            token_id=TURN_END_ID,
+                            finish_reason="tool_calls",
+                            external_tool_calls=native_delivery_calls,
+                        )
+                        return
 
                     _finalize_telemetry()
                     yield StreamStep(
                         delta_text="",
                         token_id=TURN_END_ID,
                         finish_reason="length" if hop_hit_length_limit else "stop",
+                    )
+                    return
+
+                if native_delivery_calls:
+                    _finalize_telemetry()
+                    yield BridgeStreamStep(
+                        delta_text="",
+                        token_id=TURN_END_ID,
+                        finish_reason="tool_calls",
+                        external_tool_calls=native_delivery_calls,
                     )
                     return
 
@@ -1032,7 +1186,20 @@ class LlamaCppPC2Engine:
         return canonical_tag, len(prompt_ids), managed
 
 
-def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", port: int = 8081) -> ThreadingHTTPServer:
+def create_pc2_http_server(
+    engine: LlamaCppPC2Engine,
+    host: str = "127.0.0.1",
+    port: int = 8081,
+    *,
+    web_public_dir: Path | None | bool = True,
+    model_family: str = "12b",
+) -> ThreadingHTTPServer:
+    resolved_web_dir = (
+        default_web_public_dir()
+        if web_public_dir is True
+        else (Path(web_public_dir) if isinstance(web_public_dir, (str, Path)) else None)
+    )
+
     class GatewayHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -1049,11 +1216,40 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
             self.end_headers()
             self.wfile.write(body)
 
+        def _serve_static_or_404(self, *, head_only: bool = False) -> None:
+            path = self.path.split("?", 1)[0]
+            asset = resolve_static_asset(resolved_web_dir, path)
+            if asset is not None:
+                st_code, mime, data = asset
+                self.send_response(st_code)
+                self.send_header("Content-Type", mime)
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if not head_only:
+                    self.wfile.write(data)
+                return
+            self._send_json(404, make_error_payload(f"Unknown endpoint: {path}", code="not_found"))
+
+        def do_HEAD(self) -> None:
+            path = self.path.split("?", 1)[0]
+            if path in ("/health", "/ready", "/api/status", "/api/cluster"):
+                self.send_response(200 if engine.check_backend_health() else 503)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                return
+            self._serve_static_or_404(head_only=True)
+
         def do_GET(self) -> None:
             path = self.path.split("?", 1)[0]
             if path in ("/health", "/ready"):
                 ok = engine.check_backend_health()
                 self._send_json(200 if ok else 503, {"status": "ok" if ok else "starting", "slots": 5})
+                return
+            if path in ("/api/status", "/api/cluster"):
+                self._send_json(200, build_local_status_payload(engine, model_family=model_family))
                 return
             if path == "/metrics":
                 txt = engine.format_llama_metrics().encode("utf-8")
@@ -1076,10 +1272,24 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
                     },
                 )
                 return
-            self._send_json(404, make_error_payload(f"Unknown endpoint: {path}", code="not_found"))
+            self._serve_static_or_404(head_only=False)
 
         def do_POST(self) -> None:
             path = self.path.split("?", 1)[0]
+            if path == "/api/chat":
+                try:
+                    clen = int(self.headers.get("Content-Length") or "0")
+                except ValueError:
+                    clen = 0
+                raw_bytes = self.rfile.read(max(0, clen))
+                handle_web_chat_post(
+                    self,
+                    engine,
+                    raw_bytes,
+                    model_family=model_family,
+                    slot_exhausted_cls=SlotPoolExhaustedError,
+                )
+                return
             if path != "/v1/chat/completions":
                 self._send_json(404, make_error_payload(f"Unsupported endpoint: {path}", code="not_found"))
                 return
@@ -1154,6 +1364,9 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
                             prompt_tokens=prompt_tokens,
                             completion_tokens=comp_tokens,
                         )
+                        if step_iter.telemetry.get("settled_native_delivery"):
+                            resp["choices"][0]["message"]["content"] = None
+                            resp["choices"][0]["message"]["reasoning_content"] = "已通过微信气泡送达回复。"
                     self._send_json(200, resp)
                     return
 
@@ -1163,7 +1376,13 @@ def create_pc2_http_server(engine: LlamaCppPC2Engine, host: str = "127.0.0.1", p
                 self.send_header("Connection", "close")
                 self.end_headers()
 
-                role_chunk = make_chunk_payload(req_id, created, model_tag, {"role": "assistant", "content": ""}, None)
+                is_settled_turn = bool(step_iter.telemetry.get("settled_native_delivery"))
+                role_delta: dict[str, Any] = (
+                    {"role": "assistant", "reasoning_content": "已通过微信气泡送达回复。"}
+                    if is_settled_turn
+                    else {"role": "assistant", "content": ""}
+                )
+                role_chunk = make_chunk_payload(req_id, created, model_tag, role_delta, None)
                 self.wfile.write(f"data: {json.dumps(role_chunk, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.flush()
 
@@ -1210,18 +1429,31 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", type=int, default=8081)
     ap.add_argument("--llama-host", default="127.0.0.1")
     ap.add_argument("--llama-port", type=int, default=8082)
+    ap.add_argument("--llama-base", default=None, help="Optional upstream URL (e.g. http://127.0.0.1:18082) overriding --llama-host/--llama-port")
     ap.add_argument("--model-family", choices=["12b", "26b-a4b", "e4b"], default="12b")
     ap.add_argument("--tokenizer-path", type=Path, default=None)
     ap.add_argument("--n-parallel", type=int, default=1)
     ap.add_argument("--ctx-size", type=int, default=16384)
     ap.add_argument("--max-thought-tokens", type=int, default=2048)
     ap.add_argument("--max-thought-and-tool-tokens", type=int, default=4096)
+    ap.add_argument("--web-dir", type=Path, default=None, help="Custom directory for static Web UI assets")
+    ap.add_argument("--no-webui", action="store_true", help="Disable serving the built-in 2D Persona Orb Web UI on /")
     ap.add_argument("--public-safe", action="store_true")
     args = ap.parse_args(argv)
 
+    llama_host = args.llama_host
+    llama_port = args.llama_port
+    if args.llama_base:
+        parsed_base = urlparse(args.llama_base if "://" in args.llama_base else f"http://{args.llama_base}")
+        if parsed_base.hostname:
+            llama_host = parsed_base.hostname
+        if parsed_base.port:
+            llama_port = parsed_base.port
+
+    web_dir_opt: Path | bool | None = None if args.no_webui else (args.web_dir if args.web_dir is not None else True)
     tokenizer = load_fast_tokenizer(args.tokenizer_path, model_family=args.model_family)
     engine = LlamaCppPC2Engine(
-        llama_client=LlamaCppHTTPClient(host=args.llama_host, port=args.llama_port),
+        llama_client=LlamaCppHTTPClient(host=llama_host, port=llama_port),
         tokenizer=tokenizer,
         n_parallel=args.n_parallel,
         public_safe=args.public_safe,
@@ -1229,10 +1461,20 @@ def main(argv: list[str] | None = None) -> int:
         max_thought_tokens=args.max_thought_tokens,
         max_thought_and_tool_tokens=args.max_thought_and_tool_tokens,
     )
-    srv = create_pc2_http_server(engine, host=args.host, port=args.port)
+    srv = create_pc2_http_server(
+        engine,
+        host=args.host,
+        port=args.port,
+        web_public_dir=web_dir_opt,
+        model_family=args.model_family,
+    )
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=srv.shutdown, daemon=True).start())
     signal.signal(signal.SIGINT, lambda *_: threading.Thread(target=srv.shutdown, daemon=True).start())
-    sys.stderr.write(f"[xiaofeiyu-server] Listening on http://{args.host}:{args.port} (upstream llama-server {args.llama_host}:{args.llama_port})\n")
+    webui_note = "" if args.no_webui else f", Web UI on http://{args.host}:{args.port}/"
+    sys.stderr.write(
+        f"[xiaofeiyu-server] Listening on http://{args.host}:{args.port}{webui_note} "
+        f"(upstream llama-server {llama_host}:{llama_port})\n"
+    )
     srv.serve_forever()
     return 0
 

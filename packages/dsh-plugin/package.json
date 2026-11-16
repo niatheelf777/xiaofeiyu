@@ -7,6 +7,9 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./tools": "./src/tools.ts",
+    "./tool-specs": "./src/tool-specs.ts",
+    "./client": "./lib/client.js",
     "./weights": "./src/weights.ts",
     "./tool-remap": "./src/tool-remap.ts",
     "./upstream": "./src/upstream.ts",
@@ -22,10 +25,21 @@
         "./cordis.patch.yml",
         "./presets/xiaofeiyu.patch.yml"
       ]
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-tool"
+      ]
     }
   },
   "scripts": {
-    "test": "node --test tests/*.test.ts",
+    "build:client": "node scripts/build-client.mjs",
+    "test": "node scripts/build-client.mjs && node --test tests/*.test.ts",
     "install:dry-run": "node scripts/install-dsh.mjs --dry-run"
   },
   "engines": {
@@ -35,6 +49,7 @@
     "@deepseek-ai/cordis": ">=4.0.0",
     "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.0",
     "@deepseek-ai/dsh-llm": ">=0.2.1-rc.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.0",
     "@deepseek-ai/schemastery": ">=3.18.0"
   }
 }

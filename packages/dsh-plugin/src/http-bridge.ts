@@ -3,11 +3,17 @@ import type { Socket } from 'node:net';
 import {
   ADVERTISED_MODELS,
   BubbleStreamFormatter,
+  SLIDER_PRESETS,
+  clampSlider,
+  computeEffectiveWeights,
   formatCompleteBubbleText,
+  resolveRawSlidersFromConfig,
   resolveUpstreamModelTag,
   type BubbleJoinMode,
   type SliderInputConfig,
+  type SliderPresetId,
 } from './weights.ts';
+import { isSettledNativeDeliveryTurn } from './tool-specs.ts';
 import {
   buildToolRemapTable,
   remapMessagesToUpstream,
@@ -24,6 +30,8 @@ import {
 
 export interface BridgeRuntimeStateProvider {
   readonly getSliderConfig: () => SliderInputConfig;
+  readonly setSliderConfig?: (next: SliderInputConfig, overrideModelFlavor: boolean) => void;
+  readonly getOverrideModelFlavor?: () => boolean;
   readonly getUpstreamConnection: () => Promise<ResolvedUpstreamConnection>;
   readonly getBubbleJoinMode: () => BubbleJoinMode;
   readonly fetchImpl?: FetchLike;
@@ -37,12 +45,16 @@ export interface RunningBridgeServer {
   readonly close: () => Promise<void>;
 }
 
-function sendJson(res: ServerResponse, status: number, payload: unknown): void {
+function sendJson(res: ServerResponse, status: number, payload: unknown, extraHeaders: Record<string, string> = {}): void {
   const body = Buffer.from(JSON.stringify(payload), 'utf8');
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-headers': 'Content-Type, Authorization',
     'content-length': String(body.byteLength),
+    ...extraHeaders,
   });
   res.end(body);
 }
@@ -75,16 +87,74 @@ export async function startLocalOpenAiBridge(options: {
   const host = options.host ?? '127.0.0.1';
   const { state } = options;
   const sockets = new Set<Socket>();
+  let lastRequestedModel: string | undefined;
 
   const server = createServer(async (req, res) => {
     const urlPath = (req.url ?? '/').split('?', 1)[0] ?? '/';
 
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-allow-headers': 'Content-Type, Authorization',
+        'content-length': '0',
+      });
+      res.end();
+      return;
+    }
+
+    if (urlPath === '/sliders' && (req.method === 'GET' || req.method === 'POST')) {
+      if (req.method === 'POST') {
+        let patchBody: Record<string, unknown>;
+        try {
+          patchBody = await readJsonBody(req, 64 * 1024);
+        } catch (err) {
+          sendJson(res, 400, { error: { message: err instanceof Error ? err.message : String(err) } });
+          return;
+        }
+        const cur = state.getSliderConfig();
+        const rawPreset = typeof patchBody.preset === 'string' ? patchBody.preset.trim() : cur.preset ?? 'custom';
+        const validPreset: SliderPresetId =
+          rawPreset === 'custom' || rawPreset in SLIDER_PRESETS
+            ? (rawPreset as SliderPresetId)
+            : 'custom';
+        const baseVals =
+          validPreset !== 'custom' ? SLIDER_PRESETS[validPreset].values : resolveRawSlidersFromConfig(cur);
+        const nextCfg: SliderInputConfig = {
+          preset: validPreset,
+          xiaofeiyu: patchBody.xiaofeiyu !== undefined ? clampSlider(patchBody.xiaofeiyu, 1.0) : baseVals[0],
+          neko_clingy: patchBody.neko_clingy !== undefined ? clampSlider(patchBody.neko_clingy, 0.0) : baseVals[1],
+          older_tease: patchBody.older_tease !== undefined ? clampSlider(patchBody.older_tease, 0.0) : baseVals[2],
+          brat_mesugaki: patchBody.brat_mesugaki !== undefined ? clampSlider(patchBody.brat_mesugaki, 0.0) : baseVals[3],
+          fragile_porcelain:
+            patchBody.fragile_porcelain !== undefined ? clampSlider(patchBody.fragile_porcelain, 0.0) : baseVals[4],
+        };
+        const overrideFlag = patchBody.overrideModelFlavor !== undefined ? Boolean(patchBody.overrideModelFlavor) : true;
+        state.setSliderConfig?.(nextCfg, overrideFlag);
+      }
+
+      const sliderCfg = state.getSliderConfig();
+      const conn = await state.getUpstreamConnection();
+      const overrideModelFlavor = state.getOverrideModelFlavor?.() ?? false;
+      const resolved = resolveUpstreamModelTag(lastRequestedModel, sliderCfg, conn.mode, { overrideModelFlavor });
+      const effective = computeEffectiveWeights(resolved.weights);
+      sendJson(res, 200, {
+        ok: true,
+        sliderConfig: sliderCfg,
+        overrideModelFlavor,
+        effective,
+        activeModelTag: resolved.modelTag,
+      });
+      return;
+    }
+
     if (req.method === 'GET' && (urlPath === '/health' || urlPath === '/status')) {
       const sliderCfg = state.getSliderConfig();
       const conn = await state.getUpstreamConnection();
-      const { modelTag, weights } = resolveUpstreamModelTag(undefined, sliderCfg, conn.mode);
+      const overrideModelFlavor = state.getOverrideModelFlavor?.() ?? false;
+      const { modelTag, weights } = resolveUpstreamModelTag(undefined, sliderCfg, conn.mode, { overrideModelFlavor });
       const health = await queryUpstreamHealth(conn, state.fetchImpl);
-      sendJson(res, 200, { status: 'ok', activeModelTag: modelTag, weights, upstream: health });
+      sendJson(res, 200, { status: 'ok', activeModelTag: modelTag, weights, overrideModelFlavor, upstream: health });
       return;
     }
 
@@ -127,14 +197,73 @@ export async function startLocalOpenAiBridge(options: {
       const bubbleMode = state.getBubbleJoinMode();
       const conn = await state.getUpstreamConnection();
       const requestedModel = typeof reqBody.model === 'string' ? reqBody.model : undefined;
-      const { modelTag } = resolveUpstreamModelTag(requestedModel, sliderCfg, conn.mode);
+      if (requestedModel) {
+        lastRequestedModel = requestedModel;
+      }
+      const overrideModelFlavor = state.getOverrideModelFlavor?.() ?? false;
+      const { modelTag } = resolveUpstreamModelTag(requestedModel, sliderCfg, conn.mode, { overrideModelFlavor });
 
       const rawTools = Array.isArray(reqBody.tools) ? reqBody.tools : undefined;
-      const remapTable = buildToolRemapTable(rawTools);
       const rawMessages = Array.isArray(reqBody.messages) ? (reqBody.messages as OpenAIMessage[]) : [];
-      const mappedMessages = remapMessagesToUpstream(rawMessages, remapTable);
-
       const stream = Boolean(reqBody.stream);
+
+      if (isSettledNativeDeliveryTurn(rawMessages, rawTools)) {
+        const settledId = `chatcmpl_settled_${Date.now().toString(36)}`;
+        const created = Math.floor(Date.now() / 1000);
+        const usage = { prompt_tokens: 0, completion_tokens: 1, total_tokens: 1 };
+        const settlementNote = '已通过微信气泡送达回复。';
+        if (!stream) {
+          sendJson(res, 200, {
+            id: settledId,
+            object: 'chat.completion',
+            created,
+            model: modelTag,
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: null, reasoning_content: settlementNote },
+                finish_reason: 'stop',
+              },
+            ],
+            usage,
+          });
+          return;
+        }
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        });
+        const openChunk = {
+          id: settledId,
+          object: 'chat.completion.chunk',
+          created,
+          model: modelTag,
+          choices: [
+            {
+              index: 0,
+              delta: { role: 'assistant', reasoning_content: settlementNote },
+              finish_reason: null,
+            },
+          ],
+        };
+        const stopChunk = {
+          id: settledId,
+          object: 'chat.completion.chunk',
+          created,
+          model: modelTag,
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          usage,
+        };
+        res.write(`data: ${JSON.stringify(openChunk)}\n\n`);
+        res.write(`data: ${JSON.stringify(stopChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      const remapTable = buildToolRemapTable(rawTools);
+      const mappedMessages = remapMessagesToUpstream(rawMessages, remapTable);
       const upstreamPayload: Record<string, unknown> = {
         ...reqBody,
         model: modelTag,

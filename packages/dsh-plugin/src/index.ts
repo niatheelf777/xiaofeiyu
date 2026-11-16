@@ -75,14 +75,18 @@ export async function apply(
 ): Promise<void> {
   const env = overrides.env ?? process.env;
 
-  const getSliderConfig = (): SliderInputConfig => ({
-    preset: readVal(config.preset, 'custom'),
-    xiaofeiyu: readVal(config.xiaofeiyu, 1.0),
-    neko_clingy: readVal(config.neko_clingy, 0.0),
-    older_tease: readVal(config.older_tease, 0.0),
-    brat_mesugaki: readVal(config.brat_mesugaki, 0.0),
-    fragile_porcelain: readVal(config.fragile_porcelain, 0.0),
-  });
+  let liveSliderOverride: SliderInputConfig | null = null;
+  let overrideModelFlavor = false;
+
+  const getSliderConfig = (): SliderInputConfig =>
+    liveSliderOverride ?? {
+      preset: readVal(config.preset, 'custom'),
+      xiaofeiyu: readVal(config.xiaofeiyu, 1.0),
+      neko_clingy: readVal(config.neko_clingy, 0.0),
+      older_tease: readVal(config.older_tease, 0.0),
+      brat_mesugaki: readVal(config.brat_mesugaki, 0.0),
+      fragile_porcelain: readVal(config.fragile_porcelain, 0.0),
+    };
 
   const getUpstreamConnection = async (): Promise<ResolvedUpstreamConnection> => ({
     mode: readVal(config.runtimeMode, 'unified'),
@@ -93,6 +97,11 @@ export async function apply(
 
   const stateProvider = {
     getSliderConfig,
+    setSliderConfig: (next: SliderInputConfig, overrideFlag: boolean) => {
+      liveSliderOverride = next;
+      overrideModelFlavor = overrideFlag;
+    },
+    getOverrideModelFlavor: () => overrideModelFlavor,
     getUpstreamConnection,
     getBubbleJoinMode: () => readVal(config.bubbleJoinMode, 'paragraph'),
     fetchImpl: overrides.fetchImpl,

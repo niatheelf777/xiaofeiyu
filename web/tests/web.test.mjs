@@ -14,6 +14,7 @@ import {
 import statusHandler from '../api/status.js';
 import { handleChatRequest } from '../api/chat.js';
 import { startLocalServer } from '../scripts/dev-local.mjs';
+import { parseServeArgs } from '../serve_local.mjs';
 
 test('sanitizeChatPayload strictly enforces 5 sliders and strips system/tool injection', () => {
   const parsed = sanitizeChatPayload({
@@ -130,7 +131,19 @@ test('local mock dev harness serves HTML & streams /api/chat cleanly', async () 
     assert.equal(chatRes.status, 200);
     const sse = await chatRes.text();
     assert.ok(sse.includes('event: done'));
+
+    const clusterRes = await fetch(`${app.url}/api/cluster`);
+    assert.equal(clusterRes.status, 200);
+    const clusterJson = await clusterRes.json();
+    assert.equal(clusterJson.ready, true);
   } finally {
     await app.close();
   }
+});
+
+test('serve_local.mjs parses --api / --port / --open flags cleanly', () => {
+  const parsed = parseServeArgs(['--api', 'http://127.0.0.1:8081', '--port', '3901', '--open']);
+  assert.equal(parsed.apiUrl, 'http://127.0.0.1:8081');
+  assert.equal(parsed.port, 3901);
+  assert.equal(parsed.openBrowser, true);
 });

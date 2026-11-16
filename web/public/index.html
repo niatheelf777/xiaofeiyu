@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>小肥鱼 · 在线对话体验站</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+    <!-- Left Sidebar: Visitor Profile + Mood Orb Compass + Quick Modes + Threads -->
+    <aside id="sidebar" class="sidebar" aria-label="性格调盘与对话记录">
+      <header class="sidebar-header">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 12c-3.5-4.2-8.2-5.5-12.5-3.2C5.2 10 3.6 11.4 2.5 12c1.1.6 2.7 2 5 3.2C11.8 17.5 16.5 16.2 20 12Z" />
+              <path d="M20 12l2.4-2.2v4.4L20 12Z" />
+              <circle cx="8.2" cy="11.4" r="0.9" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
+          <div class="brand-text">
+            <h1 class="brand-title">小肥鱼</h1>
+            <p class="brand-subtitle">五滑条人格混音体验</p>
+          </div>
+        </div>
+
+        <button id="profile-badge-btn" class="user-badge-btn" type="button" title="本地访客档案">
+          <span class="user-avatar-dot" id="profile-avatar-initial">访</span>
+          <span class="user-badge-id" id="profile-badge-name">访客</span>
+          <svg class="icon-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </header>
+
+      <!-- Mood Orb Compass + 5 Quick Mode Pills -->
+      <section class="compass-panel" aria-label="性格球盘">
+        <div class="panel-head">
+          <span class="section-eyebrow">性格球盘</span>
+          <button id="reset-mood-btn" class="ghost-text-btn" type="button">回正日常</button>
+        </div>
+
+        <div class="orb-pad-shell">
+          <div
+            id="orb-pad"
+            class="orb-pad"
+            role="slider"
+            tabindex="0"
+            aria-label="拖动调节性格倾向"
+            aria-valuetext="原版日常"
+          >
+            <div class="orb-ambient" id="orb-ambient" aria-hidden="true"></div>
+            <div class="orb-grid" aria-hidden="true">
+              <span class="orb-axis-h"></span>
+              <span class="orb-axis-v"></span>
+              <span class="orb-ring orb-ring-outer"></span>
+              <span class="orb-ring orb-ring-inner"></span>
+            </div>
+
+            <span class="orb-corner orb-corner-tl">猫娘</span>
+            <span class="orb-corner orb-corner-tr">御姐</span>
+            <span class="orb-corner orb-corner-bl">易碎</span>
+            <span class="orb-corner orb-corner-br">雌小鬼</span>
+            <span class="orb-center-label">日常</span>
+
+            <div id="orb-puck" class="orb-puck" aria-hidden="true">
+              <span class="orb-puck-core"></span>
+            </div>
+          </div>
+
+          <div class="mood-readout-row">
+            <span id="mood-readout-pill" class="mood-readout-pill">当前：原版日常</span>
+          </div>
+        </div>
+
+        <div class="mode-pills" id="mode-pills" role="group" aria-label="五种性格模式"></div>
+      </section>
+
+      <!-- Local Browser Conversation History -->
+      <section class="threads-panel" aria-label="对话记录">
+        <div class="threads-head">
+          <span class="section-eyebrow">本地记录</span>
+          <div class="threads-actions">
+            <button id="clear-chats-btn" class="ghost-text-btn" type="button">清空</button>
+            <button id="new-chat-btn" class="new-chat-btn" type="button">
+              <svg class="icon-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>新对话</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="conversations-list" class="conversations-list"></div>
+      </section>
+    </aside>
+
+    <!-- Main Chat Stage -->
+    <main class="chat-stage">
+      <header class="chat-topbar">
+        <div class="topbar-left">
+          <button id="mobile-menu-btn" class="icon-btn mobile-only" type="button" aria-label="打开性格球盘与记录">
+            <svg class="icon-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div class="peer-avatar" aria-hidden="true">鱼</div>
+          <div class="peer-meta">
+            <div class="peer-name-row">
+              <h2 class="peer-name">小肥鱼</h2>
+              <div class="peer-chips-row">
+                <span id="mix-chip" class="mix-chip">原版日常</span>
+              </div>
+            </div>
+            <p id="conv-subtitle" class="conv-subtitle">拖动左侧性格球，随时切换说话语气</p>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="status-popover-anchor">
+            <button
+              id="service-status-pill"
+              class="status-pill status-checking"
+              type="button"
+              aria-expanded="false"
+              aria-controls="cluster-popover"
+              title="查看推理集群实时状态"
+            >
+              <span class="status-dot"></span>
+              <span id="service-status-text">检查中</span>
+              <svg class="status-chevron icon-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+
+            <div id="cluster-popover" class="cluster-popover" role="region" aria-label="推理集群明细" hidden>
+              <div class="cluster-popover-head">
+                <span class="cluster-popover-title">推理集群</span>
+                <span id="cluster-popover-summary" class="cluster-popover-summary tabular"></span>
+              </div>
+              <div id="cluster-popover-list" class="cluster-popover-list"></div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable Message Timeline -->
+      <div id="chat-scroll" class="chat-scroll">
+        <div id="chat-timeline" class="chat-timeline"></div>
+      </div>
+
+      <!-- Bottom Capsule Composer -->
+      <footer class="composer-dock">
+        <form id="composer-form" class="composer-capsule">
+          <textarea
+            id="composer-input"
+            class="composer-input"
+            rows="1"
+            maxlength="3000"
+            placeholder="跟小肥鱼说点什么..."
+            aria-label="消息输入框"
+          ></textarea>
+          <button id="send-btn" class="send-btn" type="submit" aria-label="发送消息">
+            <svg class="icon-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5" />
+              <path d="m5 12 7-7 7 7" />
+            </svg>
+          </button>
+        </form>
+        <div class="composer-hint-row">
+          <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+          <span id="composer-mode-hint" class="composer-mode-hint">记录仅保存在当前浏览器</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- First-Visit Nickname Onboarding Gate -->
+  <div id="welcome-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
+    <div class="modal-card user-modal-card">
+      <div class="modal-head">
+        <h3 id="welcome-modal-title" class="modal-title">先留个称呼吧</h3>
+      </div>
+      <p class="modal-desc">填你的常用昵称或代号即可开聊，记录仅保存在你自己的浏览器里</p>
+      <form id="welcome-form" class="modal-form">
+        <label class="field-label" for="welcome-nickname-input">怎么称呼你</label>
+        <input
+          id="welcome-nickname-input"
+          class="text-input"
+          type="text"
+          maxlength="24"
+          placeholder="比如：阿伟 / 小林 / 你的群昵称"
+          autocomplete="off"
+          required
+        />
+        <div class="modal-footer">
+          <button type="submit" class="primary-btn">开始聊天</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Local Visitor Profile Switch / Rename Modal -->
+  <div id="profile-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+    <div class="modal-card user-modal-card">
+      <div class="modal-head">
+        <h3 id="profile-modal-title" class="modal-title">本地访客档案</h3>
+        <button id="close-profile-modal" class="icon-btn" type="button" aria-label="关闭弹窗">
+          <svg class="icon-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <p class="modal-desc">档案与聊天记录仅存于你的浏览器本地，不同访客互不可见。</p>
+
+      <form id="profile-rename-form" class="modal-form">
+        <label class="field-label" for="profile-nickname-input">当前昵称</label>
+        <div class="inline-field-row">
+          <input
+            id="profile-nickname-input"
+            class="text-input"
+            type="text"
+            maxlength="24"
+            placeholder="输入想用的称呼"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="primary-btn">改名</button>
+        </div>
+      </form>
+
+      <div class="profile-list-section">
+        <div class="profile-list-head">
+          <span class="field-label">切换或新建本地档案</span>
+          <button id="create-profile-btn" class="ghost-text-btn" type="button">+ 新建档案</button>
+        </div>
+        <div id="profile-list" class="profile-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Conversation Modal -->
+  <div id="rename-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="rename-modal-title">
+    <div class="modal-card user-modal-card">
+      <div class="modal-head">
+        <h3 id="rename-modal-title" class="modal-title">重命名对话</h3>
+        <button id="close-rename-modal" class="icon-btn" type="button" aria-label="关闭弹窗">
+          <svg class="icon-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <form id="rename-form" class="modal-form">
+        <label class="field-label" for="rename-input">对话名称</label>
+        <input id="rename-input" class="text-input" type="text" maxlength="60" required />
+        <div class="modal-footer">
+          <button type="button" id="cancel-rename-btn" class="secondary-btn">取消</button>
+          <button type="submit" class="primary-btn">保存名称</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

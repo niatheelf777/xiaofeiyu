@@ -1,0 +1,17 @@
+- insert:
+    - id: xiaofeiyu
+      name: '@xiaofeiyu/dsh-plugin'
+      config:
+        runtimeMode: unified
+        preset: custom
+        xiaofeiyu: 1
+        neko_clingy: 0
+        older_tease: 0
+        brat_mesugaki: 0
+        fragile_porcelain: 0
+        upstreamBaseUrl: http://127.0.0.1:8081/v1
+        translatorProxyUrl: http://127.0.0.1:18088/v1
+        bridgeEnabled: true
+        bridgeHost: 127.0.0.1
+        bridgePort: 18964
+        bubbleJoinMode: paragraph

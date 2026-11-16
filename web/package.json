@@ -1,0 +1,15 @@
+{
+  "name": "xiaofeiyu-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Xiaofeiyu · Public 5-slider 2D Personality Orb IM Web App (Cloudflare Workers / Vercel Edge / Node)",
+  "scripts": {
+    "dev": "node scripts/dev-local.mjs --mock",
+    "dev:live": "node scripts/dev-local.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

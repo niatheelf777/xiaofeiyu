@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# Node / TypeScript
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+
+# Secrets & Local State
+.env
+.env.*
+!.env.example
+*.secret.json
+*.key
+*.pem
+
+# Large Model Weights & Datasets
+models/
+loras/
+checkpoints/
+runtime/
+output/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+
+# OS & Editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

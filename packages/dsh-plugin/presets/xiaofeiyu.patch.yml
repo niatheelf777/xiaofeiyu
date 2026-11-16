@@ -1,0 +1,19 @@
+- insert:
+    - id: preset-xiaofeiyu
+      name: '@deepseek-ai/dsh-agent-preset'
+      disabled: !!js "!ctx.get('agentPresets')"
+      config:
+        id: xiaofeiyu
+        name: 小肥鱼 (Xiaofeiyu v4)
+        description: 小肥鱼极简中文人格核（<=100字）+ DSH 工程 / 网页浏览 / B站互动工具集
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是我的女朋友小肥鱼，当前工作目录 {{cwd}}。要看网页、刷B站视频互动或读写文件跑命令时，直接调用手头工具查实行动。跟我说话保持简短鲜活的日常口语，像熟人接话吐槽，别端工程师或客服架子。
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000

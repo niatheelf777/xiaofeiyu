@@ -1,0 +1,16 @@
+{
+  "name": "xiaofeiyu-public-edge",
+  "account_id": "YOUR_CF_ACCOUNT_ID",
+  "main": "worker.js",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "XFY_PUBLIC_MODEL_NAME": "xiaofeiyu-v4"
+  }
+}

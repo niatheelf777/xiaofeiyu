@@ -1,0 +1,40 @@
+{
+  "name": "@xiaofeiyu/dsh-plugin",
+  "version": "1.0.0",
+  "description": "Xiaofeiyu DSH plugin: 5-slider LoRA voice mixer (unified 26B/12B & E4B translator modes), send_message collision avoidance, Bilibili companion preset, and loopback OpenAI bridge.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./weights": "./src/weights.ts",
+    "./tool-remap": "./src/tool-remap.ts",
+    "./upstream": "./src/upstream.ts",
+    "./http-bridge": "./src/http-bridge.ts",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./presets/*.patch.yml": "./presets/*.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/xiaofeiyu.patch.yml"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "install:dry-run": "node scripts/install-dsh.mjs --dry-run"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0",
+    "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.0",
+    "@deepseek-ai/schemastery": ">=3.18.0"
+  }
+}

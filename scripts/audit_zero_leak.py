@@ -34,6 +34,10 @@ BINARY_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", "
 ALLOWED_PUBLIC_DOMAINS = frozenset(
     {
         "xfy.tospeak.top",
+        "niatheelf777.github.io",
+        "schema.org",
+        "sitemaps.org",
+        "www.sitemaps.org",
         "localhost",
         "127.0.0.1",
         "0.0.0.0",
@@ -102,9 +106,15 @@ RAW_IPV4_RE = re.compile(
 )
 URL_RE = re.compile(r"https?://[^\s<>\"'`)\]]+")
 
-# Structural 5-slider boundary checks (without naming private slot identifiers)
+# Structural 5-slider & confidential-research / HF-safety boundary checks
 SIX_WEIGHT_TUPLE_RE = re.compile(r"xiaofeiyu-v4\|(?:\s*\d+\.\d+\s*,){5}\s*\d+\.\d+")
-HIDDEN_QUERY_UNLOCK_RE = re.compile(r"(?:[?&][a-zA-Z]=|\bc[5-9]_[a-z0-9_]+\b|\bslot_[5-9]\b)", re.IGNORECASE)
+HIDDEN_QUERY_UNLOCK_RE = re.compile(
+    r"(?:[?&][a-zA-Z]=|\bc[5-9]_[a-z0-9_]+\b|\bslot_[5-9]\b|\buncensored?\b|\bnsfw\b)",
+    re.IGNORECASE,
+)
+PAPER_FORMULA_LEAK_RE = re.compile(
+    r"(?:\bKLD\b|\bSVD\b|\bWasserstein\b|\bPythagorean\b|\$W_1\$|\\Delta\s*W|\\cos\()"
+)
 
 
 def is_allowed_host(host: str) -> bool:
@@ -179,6 +189,9 @@ def scan_text_content(
 
         if HIDDEN_QUERY_UNLOCK_RE.search(line) and not is_self_auditor:
             findings.append({"file": rel_label, "line": line_no, "rule": "hidden_unlock_hook", "excerpt": line[:120]})
+
+        if PAPER_FORMULA_LEAK_RE.search(line) and not is_self_auditor:
+            findings.append({"file": rel_label, "line": line_no, "rule": "confidential_paper_formula", "excerpt": line[:120]})
 
         if extra_deny_re is not None:
             m_ext = extra_deny_re.search(line)

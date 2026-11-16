@@ -382,7 +382,7 @@ class TestSplitPhaseServer(unittest.TestCase):
         self.assertTrue(prompt_text.endswith("<|channel>thought\n"))
 
     def test_launch_local_dry_run_presets(self) -> None:
-        for preset in ("26b-a4b", "12b", "12b-q4", "e4b"):
+        for preset in ("26b-a4b", "26b-a4b-iq4xs", "26b-a4b-12g", "26b-a4b-q8", "12b", "12b-q4", "e4b"):
             plan = launch_local.build_launch_plan(
                 preset_name=preset,
                 models_dir=Path("./models"),
@@ -412,7 +412,8 @@ class TestSplitPhaseServer(unittest.TestCase):
             ctx_size=None,
             n_gpu_layers=99,
         )
-        self.assertIn("Q4_K_M", q4_plan["base_gguf_file"])
+        self.assertEqual(q4_plan["base_gguf_file"], "gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf")
+        self.assertEqual(q4_plan["base_hf_repo"], "niatheelf777/xiaofeiyu-12b-v4")
         self.assertTrue(all("12b" in p and "12b-q4" not in p for p in q4_plan["lora_files"]))
 
     def test_select_llama_release_asset_platforms(self) -> None:

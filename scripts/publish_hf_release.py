@@ -56,8 +56,8 @@ def validate_release_bundle(repo_root: Path, weights_dir: Path | None = None) ->
         if not card.is_file():
             raise FileNotFoundError(f"Missing HF card: {card}")
         text = card.read_text(encoding="utf-8")
-        if "license: apache-2.0" not in text:
-            raise ValueError(f"Missing apache-2.0 frontmatter in {card}")
+        if not any(lic in text for lic in ("license: gemma", "license: apache-2.0")):
+            raise ValueError(f"Missing gemma/apache-2.0 license frontmatter in {card}")
         cards_checked.append(slug)
 
     weights_found: list[str] = []

@@ -1,0 +1,49 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assemble static GEO/SEO landing bundle
+        run: |
+          mkdir -p _site/showcase
+          cp docs/index.html _site/index.html
+          cp llms.txt _site/llms.txt
+          cp llms-full.txt _site/llms-full.txt
+          cp web/public/og-card.png _site/og-card.png
+          cp web/public/robots.txt _site/robots.txt
+          cp web/public/sitemap.xml _site/sitemap.xml
+          cp assets/showcase/*.png _site/showcase/
+          touch _site/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

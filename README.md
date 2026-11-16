@@ -17,11 +17,11 @@
 `pc2_split_phase_server.py` 已内置完整纸墨风二维性格球盘前端，`launch_local.py` 可自动拉取官方预编译 `llama-server` 并一键拉起前后端：
 
 ```bash
-# 12 GB 消费级显卡推荐（如 RTX 3060 / 4070，Q4_K_M 仅占约 9.1 GiB 显存）
+# 12 GB 消费级显卡推荐（RTX 3060 / 4070，自动拉取 UD-Q4_K_XL-xfy.gguf + 5 枚卡带，总显存约 8.9 GiB）
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 
-# 16 GB+ 显卡或统一内存运行 Q8_0 满血精度（26B MoE 高吞吐可换 --preset 26b-a4b）
-python server/launch_local.py --preset 12b --auto-download-llama --open
+# 16 GB+ 消费级显卡极速 MoE（RTX 4060 Ti 16GB / L4 24GB，26B-A4B UD-Q4_K_XL-xfy.gguf 总显存约 14.6 GiB；12GB 跑 26B 可用 --preset 26b-a4b-12g）
+python server/launch_local.py --preset 26b-a4b --auto-download-llama --open
 ```
 
 启动后浏览器自动打开 `http://127.0.0.1:8081/`（同时暴露 OpenAI 兼容接口 `http://127.0.0.1:8081/v1`）。如需单独调试前端静态资源，也可运行 `node web/serve_local.mjs --api http://127.0.0.1:8081`。

@@ -17,11 +17,11 @@ Download the five GGUF adapters from [`niatheelf777/xiaofeiyu-12b-v4`](https://h
 `pc2_split_phase_server.py` serves the complete paper-and-ink 2D Persona Orb Web UI directly on `http://127.0.0.1:8081/`, and `launch_local.py` can auto-download an official prebuilt `llama-server` binary for Windows, macOS, or Linux:
 
 ```bash
-# Consumer 12 GB GPUs (RTX 3060 / 4070 — Q4_K_M fits in ~9.1 GiB VRAM)
+# Consumer 12 GB GPUs (RTX 3060 / 4070 — auto-pulls UD-Q4_K_XL-xfy.gguf + 5 LoRAs, ~8.9 GiB total VRAM)
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 
-# 16 GB+ GPUs or Apple Silicon unified memory (use --preset 26b-a4b for MoE throughput)
-python server/launch_local.py --preset 12b --auto-download-llama --open
+# Consumer 16 GB+ GPUs (RTX 4060 Ti 16GB / L4 24GB — 26B-A4B UD-Q4_K_XL-xfy.gguf ~14.6 GiB VRAM; or --preset 26b-a4b-12g on 12 GB)
+python server/launch_local.py --preset 26b-a4b --auto-download-llama --open
 ```
 
 Your browser opens `http://127.0.0.1:8081/` with live 2D orb mixing, multi-bubble streaming, and copyable code cards (`http://127.0.0.1:8081/v1` is exposed simultaneously for OpenAI clients). To run the frontend standalone against any remote `:8081` gateway, use `node web/serve_local.mjs --api http://127.0.0.1:8081`.

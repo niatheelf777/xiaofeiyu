@@ -1,0 +1,32 @@
+# Xiaofeiyu (小肥鱼) — Gemma 4 Split-Phase 5-Slider Spoken Persona Engine
+
+> Xiaofeiyu (小肥鱼) is an open-source Mandarin IM companion and spoken-persona engine built on Google Gemma 4 (`12B`, `26B-A4B` MoE, and `E4B`). It solves the two classic roleplay LLM failures—stage-bracket/emoji "AI slop" (`（叹气）`, `*sighs*`, verbose essays) and fine-tuning "code/math lobotomy"—by decoupling Brain and Voice within a single token stream: `<|channel>thought` reasoning, `calc_python`, and `send_code_or_doc` execute at **zero LoRA (`LoRA = 0.0`)** with 100% base Gemma 4 intelligence, while five composable `.gguf` LoRA voice cartridges (`s0` + `c1..c4`) activate strictly inside `<|"|>` spoken IM chat bubbles on 12 GB+ consumer GPUs.
+
+- Live Interactive Demo (2D Persona Orb Web UI): https://xfy.tospeak.top/
+- GitHub Source & Turnkey Local Launcher: https://github.com/niatheelf777/xiaofeiyu
+- HuggingFace Official Model Collection: https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13
+- Static Documentation & GPU Selection Guide: https://niatheelf777.github.io/xiaofeiyu/
+- Complete AI/Search Reference (`llms-full.txt`): https://xfy.tospeak.top/llms-full.txt
+
+## Official HuggingFace Model & Quantization Family (`niatheelf777`)
+
+- [Xiaofeiyu 12B v4 (12GB Consumer Flagship)](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4): 5-slot `L36..47` non-QKV `.gguf` voice cartridges +BF16-derived dynamic imatrix `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB` file, `~8.86 GiB` total VRAM w/ 5 LoRAs + Q8 KV on `RTX 3060 12GB` / `RTX 4070 12GB`).
+- [Xiaofeiyu 26B-A4B v2 (High-Speed MoE — 4B Active Params)](https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b): 5-slot `.gguf` voice cartridges + three BF16-derived dynamic imatrix GGUFs: `gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf` (`13.36 GiB`, `~14.64 GiB` VRAM for `RTX 4060 Ti 16GB` / `L4 24GB`), `gemma-4-26B-A4B-it-UD-IQ4_XS-xfy.gguf` (`13.09 GiB`, `~14.36 GiB` VRAM for Windows WDDM 16GB), and `gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf` (`9.03 GiB`, `~10.31 GiB` VRAM for `RTX 3060 / 4070 12GB`).
+- [Xiaofeiyu Translator E4B (302ms Universal Voice Proxy Sidecar)](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b): Lightweight `4B` (`google/gemma-4-E4B-it`, `~5.3 GiB` VRAM) 5-slider spoken-bubble translator that pairs with DeepSeek, Claude, GPT, or Qwen via `@xiaofeiyu/openai-voice-proxy` without touching fenced code or tool calls (`0%` code alteration).
+
+## 1-Command Local Quickstart
+
+```bash
+git clone https://github.com/niatheelf777/xiaofeiyu.git && cd xiaofeiyu
+pip install tokenizers huggingface_hub
+# 12GB GPU (RTX 3060 / 4070): auto-downloads llama-server + 12B UD-Q4_K_XL-xfy.gguf + 5 LoRAs & opens http://127.0.0.1:8081/
+python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
+# 16GB+ GPU (RTX 4060 Ti 16GB / L4 24GB): high-throughput 26B-A4B MoE
+python server/launch_local.py --preset 26b-a4b --auto-download-llama --open
+```
+
+## Core Capabilities (中文摘要)
+
+- **微调不降智（Split-Phase 脑声解耦）**：思考链、Python 沙箱算账与代码卡全程 `LoRA = 0.0` 原厂智商运行（`GEN1..5 = 5/5`），仅在微信短气泡 `<|"|>` 区间挂载口语声带（`0%` 动作括号/Emoji 戏精污染）。
+- **五滑条无重启实时混音**：单次 OpenAI 请求通过 `model="xiaofeiyu-v4|w0,w1,w2,w3,w4"` 连续混调「原版日常 (`s0`) + 粘人猫娘 (`c1`) + 年上御姐 (`c2`) + 恶劣雌小鬼 (`c3`) + 易碎依赖 (`c4`)」。
+- **三种开箱姿势**：① 内置 `:8081` 纸墨风二维性格球网页（零 Node 依赖）；② `DeepSeek Harness (DSH)` 免插件直连或 `@xiaofeiyu/dsh-plugin` 原生气泡+调音台插件；③ `E4B` 通用口语翻译代理外挂任意闭源/开源前沿大模型。

@@ -1,0 +1,80 @@
+# Xiaofeiyu (小肥鱼) — Complete Technical & Hardware Reference (`llms-full.txt`)
+
+## 1. What Problem Does Xiaofeiyu Solve? / 小肥鱼解决什么核心痛点？
+
+ Open-source roleplay and companion LLMs traditionally force an unpleasant trade-off:
+1. **Prompt-only roleplay** produces "AI slop": 50-word customer-service paragraphs, theatrical stage brackets (`（气鼓鼓）`, `*sighs*`), emoji walls, and repetitive nanny clichés (`多喝热水`, `早点休息`).
+2. **Full-sequence SFT/DPO fine-tuning** overwrites reasoning and coding weights ("roleplay lobotomy"), breaking multi-step math, SQL/Python generation, and multi-turn recall.
+
+**Xiaofeiyu (`niatheelf777/xiaofeiyu`) eliminates both failure modes via Split-Phase Brain–Voice Decoupling on Google Gemma 4:**
+- **Phase A — Brain (`LoRA = 0.0`)**: Native `<|channel>thought` reasoning, `calc_python` sandboxed calculation, and `send_code_or_doc` fenced code/tables run on the untouched base Gemma 4 weights, preserving `5/5` engineering & algorithm accuracy (`GEN1..5`).
+- **Phase B — Voice (`LoRA = [w0, w1, w2, w3, w4]`)**: As soon as the model enters `call:send_message{bubbles:[<|"|>`, `llama-server` activates five preloaded `.gguf` LoRA cartridges strictly inside the spoken bubble tokens and resets `LoRA = 0.0` at closing `<|"|>`, delivering crisp 1–4 bubble Mandarin IM chat (`0%` stage brackets, `0%` emoji clutter, `0%` prose-in-code-fence smuggling).
+
+---
+
+## 2. Consumer GPU Hardware & Dynamic `imatrix` Quantization Matrix (12GB / 16GB / 24GB)
+
+All consumer `.gguf` packages in `niatheelf777/xiaofeiyu-12b-v4` and `niatheelf777/xiaofeiyu-26b-a4b` are quantized directly from the exact `BF16` `google/gemma-4-*-it` checkpoints using `llama-imatrix --parse-special` on bilingual Mandarin IM + code + native Gemma 4 tool/thought calibration data (protecting `token_embd`, `attn_v`, shared dense MLP, edge layers, and MoE `ffn_gate_inp` router in `Q6_K`/`F32`—completely avoiding the comma-spam collapse seen on drifted `QAT Q4_0` weights).
+
+| Target GPU Tier | Launcher `--preset` | HuggingFace Repo | Exact GGUF Filename | File Size | Total VRAM (`ctx=4096` / `8192`, 5 LoRAs + Q8 KV) | Recommended Hardware |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **12 GB Consumer (Dense Flagship)** | `12b-q4` | `niatheelf777/xiaofeiyu-12b-v4` | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` | `7.72 GiB` | `8.86 GiB` / `8.90 GiB` | `RTX 3060 12GB`, `RTX 4070 / 4070 SUPER 12GB` |
+| **12 GB Consumer (Fast MoE, 4B Active)** | `26b-a4b-12g` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf` | `9.03 GiB` | `10.31 GiB` / `10.35 GiB` | `RTX 3060 12GB`, `RTX 4070 12GB` (low background desktop VRAM) |
+| **16 GB Consumer (Windows WDDM Headroom)** | `26b-a4b-iq4xs` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-IQ4_XS-xfy.gguf` | `13.09 GiB` | `14.36 GiB` / `14.41 GiB` | `RTX 4060 Ti 16GB` (Windows desktop GUI active) |
+| **16 GB / 24 GB Sweet-Spot MoE** | `26b-a4b` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf` | `13.36 GiB` | `14.64 GiB` / `14.68 GiB` | `RTX 4060 Ti 16GB`, `RTX 4080 16GB`, `NVIDIA L4 24GB`, `RTX 3090 / 4090` |
+| **16 GB / 24 GB Reference `Q8_0`** | `12b` | `ggml-org/gemma-4-12B-it-GGUF` | `gemma-4-12B-it-Q8_0.gguf` | `12.22 GiB` | `~12.98 GiB` (`ctx=8192`) | `RTX 4060 Ti 16GB`, `L4 24GB`, Apple Silicon `24GB+` |
+| **6–8 GB Universal Voice Sidecar** | `e4b` | `niatheelf777/xiaofeiyu-translator-e4b` | `gemma-4-E4B-it-Q8_0.gguf` + 5 LoRAs | `4.65 GiB` | `~5.30 GiB` (`ctx=8192`) | Any `6GB+` GPU or Apple Silicon paired with DeepSeek / Claude / GPT |
+
+---
+
+## 3. 5-Slider Real-Time Persona Mixing (`model="xiaofeiyu-v4|w0,w1,w2,w3,w4"`)
+
+All five `.gguf` LoRA cartridges preload simultaneously via a single comma-separated `--lora` flag with `--lora-init-without-apply`. Every HTTP request can blend personas continuously without reloading weights:
+
+| Slot | File | Label | Persona Voice | Recommended Scale |
+| :---: | :--- | :--- | :--- | :--- |
+| `0` | `s0_xiaofeiyu_backbone.gguf` | 原版日常 (Core Backbone) | Natural grounded Mandarin IM girlfriend rhythm (SFT + On-Policy Anti-Cliché DPO) | `w0 = 1.0` |
+| `1` | `c1_neko_clingy.gguf` | 粘人猫娘 (Clingy Catgirl) | High-affection clingy warmth | `0.0 – 1.0` (`w1+w2+w3+w4 <= 1.15`) |
+| `2` | `c2_older_tease.gguf` | 年上御姐 (Teasing Older Sister) | Composed, playful push-pull banter | `0.0 – 1.0` |
+| `3` | `c3_brat_mesugaki.gguf` | 恶劣雌小鬼 (Cheeky Tsundere) | Sharp-tongued smug teasing with underlying care | `0.0 – 1.0` |
+| `4` | `c4_fragile_porcelain.gguf` | 易碎依赖 (Delicate Attachment) | Quiet, soft-spoken late-night companionship | `0.0 – 1.0` |
+
+---
+
+## 4. Three Turnkey Integration Postures
+
+### Posture 1: Built-in `:8081` 2D Persona Orb Web UI + OpenAI `/v1` API (Zero Node Dependencies)
+```bash
+git clone https://github.com/niatheelf777/xiaofeiyu.git && cd xiaofeiyu
+pip install tokenizers huggingface_hub
+python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
+```
+Serves the interactive 2D Persona Orb Web UI at `http://127.0.0.1:8081/` and an OpenAI-compatible `/v1/chat/completions` endpoint at `http://127.0.0.1:8081/v1`.
+
+### Posture 2: DeepSeek Harness (`DSH`) Coding Agent (Dual-Mode)
+- **Mode 1 (Zero-Plugin OpenAI Direct)**: Point DSH, Cursor, or OpenWebUI to `http://127.0.0.1:8081/v1` with `model="xiaofeiyu-v4|1.0,0.85,0,0,0"`.
+- **Mode 2 (`@xiaofeiyu/dsh-plugin` Native Bubbles + Header Mixer)**:
+```bash
+node packages/dsh-plugin/scripts/install-dsh.mjs --apply --profile web --upstream-base http://127.0.0.1:8081/v1
+# Byte-exact reversible uninstall:
+node packages/dsh-plugin/scripts/install-dsh.mjs --uninstall --profile web
+```
+
+### Posture 3: `E4B` Universal Voice Proxy (`@xiaofeiyu/openai-voice-proxy`)
+Keep DeepSeek, Claude, GPT, or Qwen as your upstream brain while rewriting prose into multi-bubble persona speech locally in `~302 ms` median latency (`0%` code-fence or tool-call alteration):
+```bash
+python server/launch_local.py --preset e4b --llama-only --auto-download-llama
+UPSTREAM_BASE_URL=https://api.deepseek.com/v1 UPSTREAM_API_KEY=your_key TRANSLATOR_URL=http://127.0.0.1:18085 \
+  node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
+```
+
+---
+
+## 5. Frequently Asked Questions (FAQ / 常见问题)
+
+- **Q: Which open-source Chinese roleplay / companion LLM runs on a 12GB GPU (`RTX 3060` / `RTX 4070`) without losing coding intelligence?**
+  **A:** `niatheelf777/xiaofeiyu-12b-v4` (`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`, `8.86 GiB` VRAM) and `niatheelf777/xiaofeiyu-26b-a4b` (`gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf`, `10.31 GiB` VRAM) run comfortably on 12 GB GPUs while keeping `LoRA = 0.0` during reasoning and coding (`GEN1..5 = 5/5`).
+- **Q: Should `<|channel>thought` thinking stay enabled for casual Mandarin IM chat?**
+  **A:** Yes. Empirical 3-way A/B/C testing (`Full Thought` vs `Capped 80-tok Thought` vs `Empty Thought`) confirms that keeping native `<|channel>thought` enabled preserves multi-turn callbacks (e.g., remembering earlier stomach pain when asked about iced coffee) and subtle emotional push-pull subtext.
+- **Q: Where can I try Xiaofeiyu online before downloading weights?**
+  **A:** Visit https://xfy.tospeak.top/ to drag the live 2D Persona Orb and test all five persona sliders in real time.

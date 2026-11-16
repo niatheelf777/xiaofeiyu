@@ -1,6 +1,6 @@
 # Xiaofeiyu · Split-Phase 5-Slider Persona Mixing & Universal Voice Proxy
 
-[中文 README](README.md) · [Live Demo](https://xfy.tospeak.top)
+[中文 README](README.md) · [Live Demo](https://xfy.tospeak.top) · [Hugging Face Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages Overview](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
 
 Xiaofeiyu is a low-invasion spoken IM voice engine for Gemma 4: reasoning, code generation, and tool calls execute at **zero LoRA (`LoRA = 0.0`)**, while lightweight 5-slider persona adapters activate exclusively inside `<|"|>` speech-bubble delimiters—delivering authentic multi-bubble human chat without sacrificing intelligence.
 

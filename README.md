@@ -1,6 +1,6 @@
 # 小肥鱼 (Xiaofeiyu) · Split-Phase 五滑条口语外挂与气泡对话引擎
 
-[English README](README_EN.md) · [在线试玩 (Live Demo)](https://xfy.tospeak.top)
+[English README](README_EN.md) · [在线试玩 (Live Demo)](https://xfy.tospeak.top) · [Hugging Face 模型合集](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages 索引页](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
 
 小肥鱼是一套面向 Gemma 4 的**低侵入式口语声带与五滑条人格混音方案**：推理思考、代码生成与工具调用全程以零 LoRA（`LoRA = 0.0`）原生运行，仅在输出微信/IM 对话气泡的 `<|"|>` 区间实时注入轻量化人格声带权重，兼具真人短气泡节奏与 100% 满血智商。
 

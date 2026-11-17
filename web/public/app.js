@@ -313,6 +313,11 @@ function populateBubbleContent(bubbleEl, text) {
 
   const preEl = document.createElement('pre');
   preEl.className = 'code-bubble-pre';
+  const normLang = String(fence.language || '').trim().toLowerCase();
+  if (!normLang || ['text', 'txt', 'plain', 'plaintext', 'markdown', 'md'].includes(normLang)) {
+    preEl.style.whiteSpace = 'pre-wrap';
+    preEl.style.wordBreak = 'break-word';
+  }
   const codeEl = document.createElement('code');
   codeEl.textContent = fence.content;
   preEl.appendChild(codeEl);
@@ -1099,32 +1104,48 @@ async function sendMessage(rawText, options = {}) {
       weights: mood.weights,
     };
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payloadBody),
-    });
+    const streamAbort = new AbortController();
+    let idleWatchdog = null;
+    const resetIdleWatchdog = () => {
+      if (idleWatchdog) clearTimeout(idleWatchdog);
+      idleWatchdog = setTimeout(() => {
+        streamAbort.abort(new Error('CLIENT_IDLE_TIMEOUT'));
+      }, 45_000);
+    };
+    const totalWatchdog = setTimeout(() => {
+      streamAbort.abort(new Error('CLIENT_TOTAL_TIMEOUT'));
+    }, 135_000);
+    resetIdleWatchdog();
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || '刚才没连上，请稍后再试一次。');
-    }
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadBody),
+        signal: streamAbort.signal,
+      });
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let currentEvent = 'message';
-    let doneReceived = false;
-    let hitNodeId = String(res.headers.get('x-xfy-cluster-node') || '').trim();
-    if (hitNodeId === 'waking') hitNodeId = '';
-    if (hitNodeId) {
-      runtime.lastHitNodeId = hitNodeId;
-      renderClusterPopover();
-    }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || '刚才没连上，请稍后再试一次。');
+      }
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentEvent = 'message';
+      let doneReceived = false;
+      let hitNodeId = String(res.headers.get('x-xfy-cluster-node') || '').trim();
+      if (hitNodeId === 'waking') hitNodeId = '';
+      if (hitNodeId) {
+        runtime.lastHitNodeId = hitNodeId;
+        renderClusterPopover();
+      }
+
+      while (true) {
+        const { value, done } = await reader.read();
+        resetIdleWatchdog();
+        if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? '';
@@ -1174,8 +1195,8 @@ async function sendMessage(rawText, options = {}) {
             conv.messages.push({
               id: msgId,
               role: 'assistant',
-              rawContent: finalText || '（刚才信号断了一下）',
-              bubbles: finalBubbles.length > 0 ? finalBubbles : [finalText || '（刚才信号断了一下）'],
+              rawContent: finalText || '信号刚晃了一下，你再跟我说一遍嘛',
+              bubbles: finalBubbles.length > 0 ? finalBubbles : [finalText || '信号刚晃了一下，你再跟我说一遍嘛'],
               moodLabel: mood.label,
               ...(hitNodeId ? { nodeId: hitNodeId } : {}),
               createdAt: Date.now(),
@@ -1205,8 +1226,13 @@ async function sendMessage(rawText, options = {}) {
       conv.updatedAt = Date.now();
       saveStore(store);
     }
+    } finally {
+      if (idleWatchdog) clearTimeout(idleWatchdog);
+      clearTimeout(totalWatchdog);
+    }
   } catch (err) {
-    runtime.pendingError = err.message || '网络有点抖动，请稍后再试。';
+    const isAbort = err?.name === 'AbortError';
+    runtime.pendingError = isAbort ? '等待回复超时，请再试一次。' : (err.message || '网络有点抖动，请稍后再试。');
     runtime.lastFailedPrompt = clean;
   } finally {
     runtime.isSending = false;

@@ -91,6 +91,26 @@ from local_webui import (  # noqa: E402
     handle_web_chat_post,
     resolve_static_asset,
 )
+from output_guards import (  # noqa: E402
+    DEFAULT_MAX_BUBBLE_CHARS,
+    DEFAULT_MAX_SPOKEN_BUBBLES,
+    DEFAULT_PUBLIC_MAX_THOUGHT_TOKENS,
+    EMOJI_RE,
+    PHASE_A_THOUGHT_SAMPLING,
+    PHASE_B_VOICE_SAMPLING,
+    clean_spoken_bubble,
+    compute_thought_token_budget,
+    extract_json_bubbles_fallback,
+    find_bubble_stutter_cut,
+    find_thought_loop_cut,
+    is_duplicate_bubble,
+    is_junk_bubble,
+    is_real_code_language,
+    is_unrequested_english_drift,
+    normalize_lora_weights,
+    resolve_code_or_doc_emission,
+    thought_affirmatively_plans_tool,
+)
 from urllib.parse import urlparse  # noqa: E402
 
 FIVE_CARTRIDGE_FILENAMES: tuple[str, ...] = (
@@ -192,33 +212,161 @@ def _hold_partial_tag_suffix(text: str, tag: str = QUOTE_STR) -> tuple[str, str]
 
 
 class PhaseBBubbleStreamParser:
-    """Incremental `<|"|>...<|"|>` bubble streamer starting right after `bubbles:[<|"|>`."""
+    """Incremental `<|"|>...<|"|>` bubble streamer with intra/inter-bubble loop & hygiene guards."""
 
-    def __init__(self, initial_visible_blocks: int = 0) -> None:
+    def __init__(
+        self,
+        initial_visible_blocks: int = 0,
+        *,
+        max_bubbles: int = DEFAULT_MAX_SPOKEN_BUBBLES,
+        max_bubble_chars: int = DEFAULT_MAX_BUBBLE_CHARS,
+        user_last_message: str = "",
+        guard_english_drift: bool = True,
+    ) -> None:
         self.in_quote = True
         self.pending = ""
         self.bubble_started = False
         self.visible_blocks_emitted = int(initial_visible_blocks)
         self.bubbles_emitted = 0
+        self.max_bubbles = max(1, int(max_bubbles))
+        self.max_bubble_chars = max(32, int(max_bubble_chars))
+        self.user_last_message = user_last_message or ""
+        self.guard_english_drift = bool(guard_english_drift)
         self._cur_bubble_parts: list[str] = []
+        self._cur_emitted_len = 0
+        self._junk_dropped = 0
         self.completed_bubbles: list[str] = []
+        self.should_abort = False
+        self.abort_reason = ""
+        self.english_drifted = False
 
-    def _close_current_bubble(self) -> None:
-        if self.bubble_started:
-            self.visible_blocks_emitted += 1
-            self.bubbles_emitted += 1
-            text_b = "".join(self._cur_bubble_parts).strip()
-            if text_b:
-                self.completed_bubbles.append(text_b)
+    def _should_stream_live(self, candidate_text: str) -> bool:
+        """Stream Bubble #0 live for instant TTFT unless holding a potential pure-English drift prefix."""
+        if self.bubbles_emitted > 0:
+            return False
+        if not candidate_text or is_junk_bubble(candidate_text):
+            return False
+        if (
+            self.guard_english_drift
+            and len(candidate_text) < 20
+            and re.match(r"^[A-Za-z]", candidate_text)
+            and is_unrequested_english_drift([candidate_text], self.user_last_message)
+        ):
+            return False
+        return True
+
+    def _emit_live_progress(self, out_deltas: list[str]) -> None:
+        raw_cur = clean_spoken_bubble("".join(self._cur_bubble_parts))
+        if not raw_cur:
+            return
+        stutter_cut = find_bubble_stutter_cut(raw_cur)
+        hit_cap = False
+        if stutter_cut is not None:
+            raw_cur = raw_cur[:stutter_cut].rstrip("，,、 ")
+            hit_cap = True
+        elif len(raw_cur) >= self.max_bubble_chars:
+            raw_cur = raw_cur[: self.max_bubble_chars].rstrip("，,、 ")
+            hit_cap = True
+
+        if not self._should_stream_live(raw_cur):
+            if hit_cap:
+                self._commit_buffered_bubble(out_deltas, force_abort=True, reason="bubble_stutter_or_cap")
+            return
+
+        if len(raw_cur) > self._cur_emitted_len:
+            delta_piece = raw_cur[self._cur_emitted_len :]
+            if not self.bubble_started:
+                prefix = "\n" if self.visible_blocks_emitted > 0 else ""
+                out_deltas.append(prefix + delta_piece)
+                self.bubble_started = True
+            else:
+                out_deltas.append(delta_piece)
+            self._cur_emitted_len = len(raw_cur)
+
+        if hit_cap:
+            if self.bubble_started:
+                self.visible_blocks_emitted += 1
+                self.bubbles_emitted += 1
+                if raw_cur:
+                    self.completed_bubbles.append(raw_cur)
+            self._cur_bubble_parts = []
+            self._cur_emitted_len = 0
+            self.in_quote = False
+            self.bubble_started = False
+            self.should_abort = True
+            self.abort_reason = "bubble_stutter_or_cap"
+
+    def _commit_buffered_bubble(
+        self,
+        out_deltas: list[str],
+        *,
+        force_abort: bool = False,
+        reason: str = "",
+    ) -> None:
+        raw_b = clean_spoken_bubble("".join(self._cur_bubble_parts))
         self._cur_bubble_parts = []
+        already_sent = self._cur_emitted_len
+        self._cur_emitted_len = 0
+        was_started = self.bubble_started
         self.in_quote = False
         self.bubble_started = False
 
+        if self.should_abort:
+            return
+
+        stutter_cut = find_bubble_stutter_cut(raw_b)
+        if stutter_cut is not None:
+            raw_b = raw_b[:stutter_cut].rstrip("，,、 ")
+            force_abort = True
+            reason = reason or "intra_bubble_loop"
+        if len(raw_b) > self.max_bubble_chars:
+            raw_b = raw_b[: self.max_bubble_chars].rstrip("，,、 ")
+            force_abort = True
+            reason = reason or "bubble_char_cap"
+
+        if was_started:
+            if len(raw_b) > already_sent:
+                out_deltas.append(raw_b[already_sent:])
+            self.visible_blocks_emitted += 1
+            self.bubbles_emitted += 1
+            if raw_b:
+                self.completed_bubbles.append(raw_b)
+        else:
+            if is_junk_bubble(raw_b):
+                self._junk_dropped += 1
+                if self._junk_dropped >= 2:
+                    self.should_abort = True
+                    self.abort_reason = "junk_bubble_burst"
+                return
+            if (
+                self.bubbles_emitted == 0
+                and self.guard_english_drift
+                and is_unrequested_english_drift([raw_b], self.user_last_message)
+            ):
+                self.english_drifted = True
+                self.should_abort = True
+                self.abort_reason = "english_drift"
+                return
+            if is_duplicate_bubble(raw_b, self.completed_bubbles):
+                self.should_abort = True
+                self.abort_reason = "duplicate_bubble"
+                return
+            prefix = "\n" if self.visible_blocks_emitted > 0 else ""
+            out_deltas.append(prefix + raw_b)
+            self.visible_blocks_emitted += 1
+            self.bubbles_emitted += 1
+            self.completed_bubbles.append(raw_b)
+
+        if force_abort or self.bubbles_emitted >= self.max_bubbles:
+            self.should_abort = True
+            self.abort_reason = reason or "max_bubbles_reached"
+
     def feed(self, chunk: str) -> list[str]:
-        if not chunk:
+        if not chunk or self.should_abort:
             return []
         cleaned = (
-            chunk.replace("<|channel>", "")
+            EMOJI_RE.sub("", chunk)
+            .replace("<|channel>", "")
             .replace("<channel|>", "")
             .replace("<|turn>", "")
             .replace("<turn|>", "")
@@ -229,40 +377,36 @@ class PhaseBBubbleStreamParser:
         self.pending = ""
         out_deltas: list[str] = []
 
-        while QUOTE_STR in buf:
+        while QUOTE_STR in buf and not self.should_abort:
             head, buf = buf.split(QUOTE_STR, 1)
             if self.in_quote:
                 if head:
-                    if not self.bubble_started:
-                        lead = head.lstrip()
-                        if lead:
-                            prefix = "\n" if self.visible_blocks_emitted > 0 else ""
-                            out_deltas.append(prefix + lead)
-                            self._cur_bubble_parts.append(lead)
-                            self.bubble_started = True
-                    else:
-                        out_deltas.append(head)
-                        self._cur_bubble_parts.append(head)
-                self._close_current_bubble()
+                    lead = head.lstrip() if not self._cur_bubble_parts else head
+                    if lead:
+                        self._cur_bubble_parts.append(lead)
+                self._commit_buffered_bubble(out_deltas)
             else:
+                if self.bubbles_emitted >= self.max_bubbles:
+                    self.should_abort = True
+                    self.abort_reason = "max_bubbles_reached"
+                    break
                 self.in_quote = True
                 self.bubble_started = False
                 self._cur_bubble_parts = []
+                self._cur_emitted_len = 0
+
+        if self.should_abort:
+            self.pending = ""
+            return out_deltas
 
         if self.in_quote:
             safe, held = _hold_partial_tag_suffix(buf, QUOTE_STR)
             self.pending = held
             if safe:
-                if not self.bubble_started:
-                    lead = safe.lstrip()
-                    if lead:
-                        prefix = "\n" if self.visible_blocks_emitted > 0 else ""
-                        out_deltas.append(prefix + lead)
-                        self._cur_bubble_parts.append(lead)
-                        self.bubble_started = True
-                else:
-                    out_deltas.append(safe)
-                    self._cur_bubble_parts.append(safe)
+                lead = safe.lstrip() if not self._cur_bubble_parts else safe
+                if lead:
+                    self._cur_bubble_parts.append(lead)
+                    self._emit_live_progress(out_deltas)
         else:
             _, held = _hold_partial_tag_suffix(buf, QUOTE_STR)
             self.pending = held
@@ -271,20 +415,16 @@ class PhaseBBubbleStreamParser:
 
     def finalize(self) -> list[str]:
         out: list[str] = []
+        if self.should_abort:
+            self.pending = ""
+            return out
         if self.in_quote and self.pending:
             rem = self.pending.replace("<|", "").replace("|>", "").strip()
             if rem:
-                if not self.bubble_started:
-                    prefix = "\n" if self.visible_blocks_emitted > 0 else ""
-                    out.append(prefix + rem)
-                    self._cur_bubble_parts.append(rem)
-                    self.bubble_started = True
-                else:
-                    out.append(rem)
-                    self._cur_bubble_parts.append(rem)
+                self._cur_bubble_parts.append(rem)
         self.pending = ""
-        if self.in_quote and self.bubble_started:
-            self._close_current_bubble()
+        if self.in_quote and self._cur_bubble_parts:
+            self._commit_buffered_bubble(out)
         return out
 
 
@@ -480,9 +620,14 @@ def sanitize_public_safe_messages(
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages must be a non-empty list")
 
+    last_user_idx = -1
+    for idx_m, m in enumerate(messages):
+        if isinstance(m, dict) and str(m.get("role") or "user").strip().lower() == "user":
+            last_user_idx = idx_m
+
     sys_parts: list[str] = []
     conv_msgs: list[dict[str, str]] = []
-    for m in messages:
+    for idx_m, m in enumerate(messages):
         if not isinstance(m, dict):
             raise ValueError("Each message must be a JSON object")
         role = str(m.get("role") or "user").strip().lower()
@@ -493,7 +638,9 @@ def sanitize_public_safe_messages(
         raw_c = m.get("content")
         txt = raw_c if isinstance(raw_c, str) else ""
         if len(txt) > max_chars_per_msg:
-            raise ValueError(f"Message content length ({len(txt)}) exceeds {max_chars_per_msg} chars limit")
+            if idx_m == last_user_idx:
+                raise ValueError(f"Message content length ({len(txt)}) exceeds {max_chars_per_msg} chars limit")
+            txt = txt[:max_chars_per_msg]
         if role in ("system", "developer"):
             if txt.strip():
                 sys_parts.append(txt.strip())
@@ -504,8 +651,8 @@ def sanitize_public_safe_messages(
     budget = (max_messages - 1) if sys_msg is not None else max_messages
     if len(conv_msgs) > budget:
         conv_msgs = conv_msgs[-budget:]
-        while conv_msgs and conv_msgs[0]["role"] == "assistant":
-            conv_msgs.pop(0)
+    while conv_msgs and conv_msgs[0]["role"] == "assistant":
+        conv_msgs.pop(0)
     if not conv_msgs or not any(cm["role"] == "user" for cm in conv_msgs):
         raise ValueError("Conversation must contain at least one user message")
     return [sys_msg, *conv_msgs] if sys_msg is not None else conv_msgs
@@ -524,8 +671,8 @@ class LlamaCppPC2Engine:
         public_safe: bool = False,
         ctx_size: int = 16384,
         min_thought_tokens: int = 12,
-        max_thought_tokens: int = 2048,
-        max_thought_and_tool_tokens: int = 4096,
+        max_thought_tokens: int = DEFAULT_PUBLIC_MAX_THOUGHT_TOKENS,
+        max_thought_and_tool_tokens: int = 2048,
         max_tool_hops: int = 4,
         lora_slot_count: int = 5,
     ) -> None:
@@ -637,8 +784,9 @@ class LlamaCppPC2Engine:
         )
 
     def _build_lora_payload(self, weights: tuple[float, float, float, float, float]) -> list[dict]:
+        norm_w = normalize_lora_weights(weights)
         return [
-            {"id": idx, "scale": (round(float(weights[idx]), 4) if abs(float(weights[idx])) > 1e-6 else 0.0)}
+            {"id": idx, "scale": (round(float(norm_w[idx]), 4) if abs(float(norm_w[idx])) > 1e-6 else 0.0)}
             for idx in range(5)
         ]
 
@@ -705,12 +853,37 @@ class LlamaCppPC2Engine:
             )
             return canonical_tag, 0, settled_iter
 
-        prompt_text, tool_registry = render_gemma4_v4_prompt_with_tools(
-            effective_messages,
-            slider_weights=user_weights,
-            registry=tool_registry,
-        )
-        prompt_ids = list(self.tok.encode(prompt_text, add_special_tokens=False).ids)
+        user_last_msg = ""
+        for m_item in reversed(effective_messages):
+            if isinstance(m_item, dict) and str(m_item.get("role") or "").strip().lower() == "user":
+                c_val = m_item.get("content")
+                user_last_msg = c_val if isinstance(c_val, str) else json.dumps(c_val, ensure_ascii=False)
+                break
+
+        def _render_and_encode(msgs_in: list[dict]) -> tuple[str, Any, list[int]]:
+            p_txt, reg_local = render_gemma4_v4_prompt_with_tools(
+                msgs_in,
+                slider_weights=user_weights,
+                registry=tool_registry,
+            )
+            p_ids = list(self.tok.encode(p_txt, add_special_tokens=False).ids)
+            return p_txt, reg_local, p_ids
+
+        prompt_text, tool_registry, prompt_ids = _render_and_encode(effective_messages)
+
+        gen_reserve = min(1536, max(384, self.slot_ctx_size // 4))
+        max_prompt_budget = max(1024, self.slot_ctx_size - gen_reserve)
+        while len(prompt_ids) > max_prompt_budget:
+            drop_idx = 0
+            while drop_idx < len(effective_messages) and str(effective_messages[drop_idx].get("role") or "").strip().lower() in ("system", "developer"):
+                drop_idx += 1
+            rem_conv = len(effective_messages) - drop_idx
+            if rem_conv <= 1:
+                break
+            effective_messages.pop(drop_idx)
+            while (len(effective_messages) - drop_idx) > 1 and str(effective_messages[drop_idx].get("role") or "").strip().lower() != "user":
+                effective_messages.pop(drop_idx)
+            prompt_text, tool_registry, prompt_ids = _render_and_encode(effective_messages)
 
         if len(prompt_ids) < 3 or prompt_ids[-1] != NEWLINE_ID:
             raise ValueError("Encoded Gemma 4 prompt does not end with <|channel>thought\\n")
@@ -852,12 +1025,18 @@ class LlamaCppPC2Engine:
                         decode_ms_total += a0.predicted_ms
                         predicted_tokens_total += a0.tokens_predicted
 
+                    hop_thought_budget = compute_thought_token_budget(
+                        user_last_msg,
+                        configured_max=self.max_thought_tokens,
+                        has_external_tools=tool_registry.has_external_tools,
+                    )
+                    t_chunks: list[str] = []
                     t_final: LlamaCompletionResult | None = None
-                    for _, t_done in self.llama.complete_stream(
+                    t_stream = self.llama.complete_stream(
                         {
                             "id_slot": slot_id,
                             "prompt": cur_ids,
-                            "n_predict": self.max_thought_tokens,
+                            "n_predict": hop_thought_budget,
                             "temperature": min(temp, 0.65),
                             "top_p": tp,
                             "seed": (hop_seed + 1) if hop_seed >= 0 else -1,
@@ -866,15 +1045,41 @@ class LlamaCppPC2Engine:
                             "special": True,
                             "stop": [CHANNEL_CLOSE_STR],
                             "logit_bias": self._thought_logit_bias,
+                            **PHASE_A_THOUGHT_SAMPLING,
                         }
-                    ):
-                        allow_cache_prompt = True
-                        if t_done is not None:
-                            t_final = t_done
+                    )
+                    try:
+                        for t_piece, t_done in t_stream:
+                            allow_cache_prompt = True
+                            if t_piece:
+                                t_chunks.append(t_piece)
+                                full_th_now = kickoff_text + "".join(t_chunks)
+                                cut_at = find_thought_loop_cut(full_th_now)
+                                if cut_at is not None:
+                                    keep_rel = max(0, cut_at - len(kickoff_text))
+                                    trimmed_t = "".join(t_chunks)[:keep_rel]
+                                    t_final = LlamaCompletionResult(
+                                        content=trimmed_t,
+                                        stopping_word="",
+                                        stop_type="thought_loop_guard",
+                                        tokens_predicted=len(t_chunks),
+                                        prompt_n=0,
+                                        prompt_ms=0.0,
+                                        predicted_ms=0.0,
+                                        predicted_per_second=0.0,
+                                    )
+                                    break
+                            if t_done is not None:
+                                t_final = t_done
+                    finally:
+                        t_close = getattr(t_stream, "close", None)
+                        if callable(t_close):
+                            t_close()
                     assert t_final is not None
                     prefill_ms_total += t_final.prompt_ms
                     decode_ms_total += t_final.predicted_ms
                     predicted_tokens_total += t_final.tokens_predicted
+                    hop_thought_full = kickoff_text + t_final.content
 
                     cur_prompt_text += t_final.content + CHANNEL_CLOSE_STR + TOOL_CALL_OPEN_STR
                     seg_open_prefix = TOOL_CALL_OPEN_STR
@@ -883,6 +1088,7 @@ class LlamaCppPC2Engine:
                     hop_completed_calls: list[tuple[str, dict[str, Any]]] = []
                     hop_spoken_chunks: list[str] = []
                     hop_hit_length_limit = False
+                    hop_last_stop_word = ""
 
                     for seg_idx in range(6):
                         a1_chunks: list[str] = []
@@ -916,7 +1122,7 @@ class LlamaCppPC2Engine:
                                     if m_code:
                                         lang_tag = (m_code.group(1) or "").strip()
                                         tail_body = m_code.group(2)
-                                        if lang_tag:
+                                        if lang_tag and is_real_code_language(lang_tag):
                                             if not code_opened and (len(tail_body) >= 4 or QUOTE_STR in tail_body):
                                                 prefix = "\n" if visible_blocks_emitted > 0 else ""
                                                 code_wrapped = not tail_body.lstrip().startswith("```")
@@ -960,6 +1166,7 @@ class LlamaCppPC2Engine:
 
                         raw_a1 = a1_final.content
                         stop_word = a1_final.stopping_word
+                        hop_last_stop_word = stop_word
                         seg_post = seg_open_prefix + raw_a1
                         seg_open_prefix = ""
 
@@ -969,17 +1176,33 @@ class LlamaCppPC2Engine:
                             if t_name == "send_code_or_doc" and not code_opened:
                                 lang = re.sub(r"[^a-zA-Z0-9_+#.-]", "", str(t_args.get("language") or "").strip())
                                 body = str(t_args.get("content") or "").rstrip("\r\n")
-                                _record_first_visible()
                                 if native_bubble_wire:
+                                    _record_first_visible()
                                     visible_chars_emitted += len(body)
                                     _record_native_code(lang, body)
+                                    visible_blocks_emitted += 1
                                 else:
-                                    prefix = "\n" if visible_blocks_emitted > 0 else ""
-                                    code_wrapped = not body.lstrip().startswith("```")
-                                    blk = f"{prefix}```{lang}\n{body}\n```" if code_wrapped else f"{prefix}{body}"
-                                    visible_chars_emitted += len(blk)
-                                    yield StreamStep(delta_text=blk, token_id=TOOL_CALL_CLOSE_ID)
-                                visible_blocks_emitted += 1
+                                    emit_mode, eff_lang, eff_body = resolve_code_or_doc_emission(
+                                        lang, body, user_last_msg, send_message_bubbles_total
+                                    )
+                                    if emit_mode == "fence":
+                                        _record_first_visible()
+                                        prefix = "\n" if visible_blocks_emitted > 0 else ""
+                                        code_wrapped = bool(eff_lang) and not eff_body.lstrip().startswith("```")
+                                        blk = f"{prefix}```{eff_lang}\n{eff_body}\n```" if code_wrapped else f"{prefix}{eff_body}"
+                                        visible_chars_emitted += len(blk)
+                                        yield StreamStep(delta_text=blk, token_id=TOOL_CALL_CLOSE_ID)
+                                        visible_blocks_emitted += 1
+                                    elif emit_mode == "bubbles" and eff_body:
+                                        _record_first_visible()
+                                        prefix = "\n" if visible_blocks_emitted > 0 else ""
+                                        blk = prefix + eff_body
+                                        visible_chars_emitted += len(blk)
+                                        hop_spoken_chunks.append(blk)
+                                        yield StreamStep(delta_text=blk, token_id=QUOTE_DELIM_ID)
+                                        unwrapped_n = eff_body.count("\n") + 1
+                                        visible_blocks_emitted += unwrapped_n
+                                        send_message_bubbles_total += unwrapped_n
                             elif t_name == "send_message":
                                 raw_seg_bubbles = [str(b).strip() for b in (t_args.get("bubbles") or []) if str(b).strip()]
                                 if native_bubble_wire:
@@ -1004,35 +1227,66 @@ class LlamaCppPC2Engine:
                             hop_completed_calls.append(("send_message", {}))
                             cur_prompt_text += raw_a1 + stop_word
                             cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
-                            b_parser = PhaseBBubbleStreamParser(initial_visible_blocks=visible_blocks_emitted)
-                            b_chunks: list[str] = []
-                            b_final: LlamaCompletionResult | None = None
 
-                            for b_piece, b_done in self.llama.complete_stream(
-                                {
-                                    "id_slot": slot_id,
-                                    "prompt": cur_ids,
-                                    "n_predict": max_visible,
-                                    "temperature": temp,
-                                    "top_p": tp,
-                                    "seed": (hop_seed + seg_idx * 7 + 3) if hop_seed >= 0 else -1,
-                                    "lora": phase_b_lora_payload,
-                                    "cache_prompt": allow_cache_prompt,
-                                    "special": True,
-                                    "stop": PHASE_B_STOPS,
-                                    "logit_bias": self._phase_b_logit_bias,
-                                }
-                            ):
-                                if b_piece:
-                                    b_chunks.append(b_piece)
-                                    for delta_str in b_parser.feed(b_piece):
-                                        _record_first_visible()
-                                        visible_chars_emitted += len(delta_str)
-                                        hop_spoken_chunks.append(delta_str)
-                                        if not native_bubble_wire:
-                                            yield StreamStep(delta_text=delta_str, token_id=QUOTE_DELIM_ID)
-                                if b_done is not None:
-                                    b_final = b_done
+                            for b_try in range(2):
+                                b_parser = PhaseBBubbleStreamParser(
+                                    initial_visible_blocks=visible_blocks_emitted,
+                                    user_last_message=user_last_msg,
+                                    guard_english_drift=(b_try == 0),
+                                )
+                                b_chunks = []
+                                b_final = None
+                                b_stream = self.llama.complete_stream(
+                                    {
+                                        "id_slot": slot_id,
+                                        "prompt": cur_ids,
+                                        "n_predict": min(max_visible, 320),
+                                        "temperature": temp,
+                                        "top_p": tp,
+                                        "seed": (hop_seed + seg_idx * 7 + 3 + b_try * 97) if hop_seed >= 0 else -1,
+                                        "lora": phase_b_lora_payload,
+                                        "cache_prompt": allow_cache_prompt,
+                                        "special": True,
+                                        "stop": PHASE_B_STOPS,
+                                        "logit_bias": self._phase_b_logit_bias,
+                                        **PHASE_B_VOICE_SAMPLING,
+                                    }
+                                )
+                                try:
+                                    for b_piece, b_done in b_stream:
+                                        if b_piece:
+                                            b_chunks.append(b_piece)
+                                            for delta_str in b_parser.feed(b_piece):
+                                                _record_first_visible()
+                                                visible_chars_emitted += len(delta_str)
+                                                hop_spoken_chunks.append(delta_str)
+                                                if not native_bubble_wire:
+                                                    yield StreamStep(delta_text=delta_str, token_id=QUOTE_DELIM_ID)
+                                            if b_parser.should_abort:
+                                                b_final = LlamaCompletionResult(
+                                                    content="".join(b_chunks),
+                                                    stopping_word="]}<tool_call|>",
+                                                    stop_type=b_parser.abort_reason or "bubble_guard",
+                                                    tokens_predicted=len(b_chunks),
+                                                    prompt_n=0,
+                                                    prompt_ms=0.0,
+                                                    predicted_ms=0.0,
+                                                    predicted_per_second=0.0,
+                                                )
+                                                break
+                                        if b_done is not None:
+                                            b_final = b_done
+                                finally:
+                                    b_close = getattr(b_stream, "close", None)
+                                    if callable(b_close):
+                                        b_close()
+
+                                if b_parser.english_drifted and b_try == 0 and b_parser.bubbles_emitted == 0:
+                                    cur_prompt_text += '<|"|>]}<tool_call|><|tool_response>response:send_message{delivered:false}<tool_response|><|channel>thought\n请改用自然中文微信口语回复男朋友。\n<channel|><|tool_call>call:send_message{bubbles:[<|"|>'
+                                    cur_ids = list(self.tok.encode(cur_prompt_text, add_special_tokens=False).ids)
+                                    allow_cache_prompt = not any(abs(w) > 1e-6 for w in user_weights)
+                                    continue
+                                break
 
                             for tail_str in b_parser.finalize():
                                 _record_first_visible()
@@ -1104,7 +1358,11 @@ class LlamaCppPC2Engine:
                     # stopped at `<|tool_response>` waiting for `send_message` acknowledgment, feed the
                     # synthetic delivery receipt once so Phase A immediately emits the remaining call.
                     has_code_call = any(t_name == "send_code_or_doc" for t_name, _ in hop_completed_calls)
-                    planned_missing_code = ("send_code_or_doc" in t_final.content) and not has_code_call
+                    planned_missing_code = (
+                        hop_last_stop_word == TOOL_RESP_OPEN_STR
+                        and thought_affirmatively_plans_tool(hop_thought_full, "send_code_or_doc")
+                        and not has_code_call
+                    )
                     if (
                         hop_idx == 0
                         and (hop_idx + 1) < self.max_tool_hops
@@ -1139,6 +1397,73 @@ class LlamaCppPC2Engine:
                             _record_native_bubbles([last_calc_stdout])
                         else:
                             yield StreamStep(delta_text=last_calc_stdout, token_id=TURN_END_ID)
+                        visible_blocks_emitted += 1
+
+                    if visible_blocks_emitted == 0 and not native_delivery_calls:
+                        rescued_bubbles = extract_json_bubbles_fallback(hop_thought_full)
+                        if rescued_bubbles:
+                            _record_first_visible()
+                            if native_bubble_wire:
+                                _record_native_bubbles(rescued_bubbles)
+                                visible_blocks_emitted += len(rescued_bubbles)
+                            else:
+                                joined_rescued = "\n".join(rescued_bubbles)
+                                visible_chars_emitted += len(joined_rescued)
+                                yield StreamStep(delta_text=joined_rescued, token_id=QUOTE_DELIM_ID)
+                                visible_blocks_emitted += len(rescued_bubbles)
+                        else:
+                            recovery_anchor = (
+                                f"{prompt_text}{hop_thought_full}{CHANNEL_CLOSE_STR}"
+                                f'{TOOL_CALL_OPEN_STR}call:send_message{{bubbles:[{QUOTE_STR}'
+                            )
+                            rec_ids = list(self.tok.encode(recovery_anchor, add_special_tokens=False).ids)
+                            rec_parser = PhaseBBubbleStreamParser(
+                                initial_visible_blocks=0,
+                                user_last_message=user_last_msg,
+                                guard_english_drift=False,
+                            )
+                            rec_stream = self.llama.complete_stream(
+                                {
+                                    "id_slot": slot_id,
+                                    "prompt": rec_ids,
+                                    "n_predict": min(max_visible, 220),
+                                    "temperature": temp,
+                                    "top_p": tp,
+                                    "seed": (hop_seed + 53) if hop_seed >= 0 else -1,
+                                    "lora": phase_b_lora_payload,
+                                    "cache_prompt": True,
+                                    "special": True,
+                                    "stop": PHASE_B_STOPS,
+                                    "logit_bias": self._phase_b_logit_bias,
+                                    **PHASE_B_VOICE_SAMPLING,
+                                }
+                            )
+                            try:
+                                for r_piece, r_done in rec_stream:
+                                    if r_piece:
+                                        for d_str in rec_parser.feed(r_piece):
+                                            _record_first_visible()
+                                            visible_chars_emitted += len(d_str)
+                                            if not native_bubble_wire:
+                                                yield StreamStep(delta_text=d_str, token_id=QUOTE_DELIM_ID)
+                                        if rec_parser.should_abort:
+                                            break
+                                    if r_done is not None:
+                                        prefill_ms_total += r_done.prompt_ms
+                                        decode_ms_total += r_done.predicted_ms
+                                        predicted_tokens_total += r_done.tokens_predicted
+                            finally:
+                                r_close = getattr(rec_stream, "close", None)
+                                if callable(r_close):
+                                    r_close()
+                            for r_tail in rec_parser.finalize():
+                                _record_first_visible()
+                                visible_chars_emitted += len(r_tail)
+                                if not native_bubble_wire:
+                                    yield StreamStep(delta_text=r_tail, token_id=QUOTE_DELIM_ID)
+                            if native_bubble_wire and rec_parser.completed_bubbles:
+                                _record_native_bubbles(rec_parser.completed_bubbles)
+                            visible_blocks_emitted = rec_parser.visible_blocks_emitted
 
                     if native_delivery_calls:
                         _finalize_telemetry()
@@ -1434,8 +1759,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tokenizer-path", type=Path, default=None)
     ap.add_argument("--n-parallel", type=int, default=1)
     ap.add_argument("--ctx-size", type=int, default=16384)
-    ap.add_argument("--max-thought-tokens", type=int, default=2048)
-    ap.add_argument("--max-thought-and-tool-tokens", type=int, default=4096)
+    ap.add_argument("--max-thought-tokens", type=int, default=DEFAULT_PUBLIC_MAX_THOUGHT_TOKENS)
+    ap.add_argument("--max-thought-and-tool-tokens", type=int, default=2048)
     ap.add_argument("--web-dir", type=Path, default=None, help="Custom directory for static Web UI assets")
     ap.add_argument("--no-webui", action="store_true", help="Disable serving the built-in 2D Persona Orb Web UI on /")
     ap.add_argument("--public-safe", action="store_true")

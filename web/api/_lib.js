@@ -427,6 +427,9 @@ export function sanitizeChatPayload(body) {
   }
 
   const sliced = cleaned.slice(-MAX_MESSAGES);
+  while (sliced.length > 1 && sliced[0].role !== 'user') {
+    sliced.shift();
+  }
   if (sliced.length === 0) {
     throw Object.assign(new Error('请先输入有效对话内容'), { status: 400, code: 'EMPTY_MESSAGES' });
   }

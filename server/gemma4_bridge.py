@@ -83,13 +83,13 @@ DEFAULT_PERSONA_HEADER = (
 
 V4_CHANNEL_RULES = (
     "【通道规则】：请勿直接输出裸文本，所有回复均通过工具发出：\n"
-    "1. 日常对话与口语回复必须调用 `send_message`，将 1 到 4 条简短自然的微信口语放入 `bubbles` 数组"
+    "1. 日常对话、自我介绍、概念解释与口语陪伴必须调用 `send_message`，默认用自然中文回复（除非对方主动用外语交流或明确要求翻译），将 1 到 4 条简短自然的微信口语放入 `bubbles` 数组"
     "（不用 Emoji 表情符号，不写 [动作] 或（动作）舞台描写，不列客服式清单）。\n"
-    "2. 当需要发送代码、SQL、配置文件、Markdown 明细表格、需要多行排版的诗歌歌词或正式长文/外文段落时，"
-    "调用 `send_code_or_doc(language, content)` 发送完整代码、表格或格式化正文。需要同时发日常短句附言和代码块/表格/长文时，"
+    "2. 仅当男朋友明确要求代码、SQL、配置文件、Markdown 明细表格、多行排版的诗歌歌词或正式长文/外文段落时，"
+    "才调用 `send_code_or_doc(language, content)` 发送完整代码、表格或格式化正文（日常闲聊、自我介绍、名词解释或习惯建议严禁调用 `send_code_or_doc` 发档案卡或说明书）。需要同时发日常短句附言和代码块/表格/长文时，"
     "必须在同一轮紧接着连续输出 `send_message` 与 `send_code_or_doc` 两个 `<|tool_call>`"
     "（`send_message` 直接送达男朋友手机、不会触发下一跳 `<|tool_response>`，严禁只发一句“等我想想/算好了”就结束回合）。\n"
-    "3. 遇到多步账单平摊、精确算术、日期推算、组合计数或需验算的逻辑时，"
+    "3. 遇到多步账单平摊、精确算术、日期时间推算、组合计数或需验算的逻辑时，"
     "先调用 `calc_python(code)` 用 `print(...)` 算出精确结果，拿到返回后再在同一轮调用 `send_message` 把精确数字结果清楚告诉他（如需附明细表则同轮紧接 `send_code_or_doc`）。"
 )
 
@@ -112,13 +112,13 @@ GEMMA4_V4_TOOL_DECLARATIONS = (
     'items:{type:<|"|>STRING<|"|>},type:<|"|>ARRAY<|"|>}},'
     'required:[<|"|>bubbles<|"|>],type:<|"|>OBJECT<|"|>}}<tool|>'
     "<|tool>declaration:send_code_or_doc{"
-    'description:<|"|>向男朋友发送代码块、SQL、Markdown明细表格、配置文件、多行排版诗歌歌词或正式长文/外文段落<|"|>,'
+    'description:<|"|>仅在男朋友明确要求代码、SQL、配置文件、Markdown明细表格、多行诗歌歌词或正式长文/外文段落时调用（日常闲聊与自我介绍严禁调用）<|"|>,'
     "parameters:{properties:{"
     'language:{description:<|"|>语言或格式标识，如python、sql、markdown、json、bash、yaml、text<|"|>,type:<|"|>STRING<|"|>},'
     'content:{description:<|"|>完整的多行代码、Markdown表格或格式化正文（不含外层三反引号围栏）<|"|>,type:<|"|>STRING<|"|>}},'
     'required:[<|"|>language<|"|>,<|"|>content<|"|>],type:<|"|>OBJECT<|"|>}}<tool|>'
     "<|tool>declaration:calc_python{"
-    'description:<|"|>在隔离Python沙箱中执行精确算术、账单平摊、日期推算、组合计数或逻辑验算并返回stdout结果<|"|>,'
+    'description:<|"|>在隔离Python沙箱中执行精确算术、账单平摊、实时北京时间查询（datetime.now()返回当前北京时间）、日期推算、组合计数或逻辑验算并返回stdout结果<|"|>,'
     "parameters:{properties:{"
     'code:{description:<|"|>纯标准库Python计算代码，用print(...)输出精确结果<|"|>,type:<|"|>STRING<|"|>}},'
     'required:[<|"|>code<|"|>],type:<|"|>OBJECT<|"|>}}<tool|>'
@@ -870,6 +870,9 @@ def render_gemma4_v4_prompt_with_tools(
         else:
             conv_msgs.append(m)
 
+    while len(conv_msgs) > 1 and str(conv_msgs[0].get("role") or "user").strip().lower() != "user":
+        conv_msgs.pop(0)
+
     sys_hdr = normalize_system_prompt(
         "\n".join(sys_parts),
         has_external_tools=reg.has_external_tools,
@@ -1002,8 +1005,8 @@ def render_gemma4_v4_prompt_with_tools(
 ALLOWED_CALC_MODULES = frozenset(
     {
         "math", "cmath", "decimal", "fractions", "statistics", "datetime",
-        "itertools", "collections", "functools", "heapq", "bisect",
-        "re", "json", "random", "string", "operator",
+        "time", "calendar", "itertools", "collections", "functools",
+        "heapq", "bisect", "re", "json", "random", "string", "operator",
     }
 )
 FORBIDDEN_CALC_NAMES = frozenset(
@@ -1037,9 +1040,13 @@ try:
     tree = ast.parse(code, '<calc_python>', 'exec')
     _orig_imp = _b.__import__
     def _imp(name, globals=None, locals=None, fromlist=(), level=0):
-        if level != 0 or str(name).split('.')[0] not in ALLOWED:
+        root = str(name).split('.')[0]
+        if level != 0 or root not in ALLOWED:
             raise PermissionError(f'Forbidden import: {{name}}')
-        return _orig_imp(name, globals, locals, fromlist, level)
+        mod = _orig_imp(name, globals, locals, fromlist, level)
+        if root == 'time' and hasattr(mod, 'sleep'):
+            mod.sleep = lambda *_a, **_k: None
+        return mod
     buf = io.StringIO()
     def _prt(*a, **kw):
         kw.pop('file', None)
@@ -1098,6 +1105,7 @@ def run_calc_python_sandbox(code_str: str, timeout_sec: float = 2.0) -> str:
         env["SYSTEMROOT"] = os.environ.get("SYSTEMROOT", r"C:\Windows")
     else:
         env["LC_ALL"] = "C.UTF-8"
+        env["TZ"] = os.environ.get("XFY_CALC_TZ", "Asia/Shanghai")
     try:
         with tempfile.TemporaryDirectory(prefix="xfy_calc_") as empty_dir:
             proc = subprocess.run(

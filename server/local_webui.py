@@ -379,7 +379,7 @@ def handle_web_chat_post(
             for step in step_iter:
                 if step.delta_text:
                     pieces.append(step.delta_text)
-            final_raw = "".join(pieces).strip() or "（先等我喘口气，刚才没听清）"
+            final_raw = "".join(pieces).strip() or "信号刚晃了一下，你再跟我说一遍嘛"
             final_bubbles = split_reply_bubbles(final_raw)
             latency_ms = int(round((time.perf_counter() - started_at) * 1000.0))
             _send_web_json(
@@ -442,7 +442,7 @@ def handle_web_chat_post(
             collected_bubbles.append(tail_evt["text"])
             handler.wfile.write(format_sse_event("bubble", tail_evt))
 
-        final_raw = accumulated.strip() or "（先等我喘口气，刚才没听清）"
+        final_raw = accumulated.strip() or "信号刚晃了一下，你再跟我说一遍嘛"
         final_bubbles = collected_bubbles if collected_bubbles else split_reply_bubbles(final_raw)
         latency_ms = int(round((time.perf_counter() - started_at) * 1000.0))
 

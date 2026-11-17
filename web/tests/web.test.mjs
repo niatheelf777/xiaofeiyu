@@ -147,3 +147,41 @@ test('serve_local.mjs parses --api / --port / --open flags cleanly', () => {
   assert.equal(parsed.port, 3901);
   assert.equal(parsed.openBrowser, true);
 });
+
+test('sanitizeChatPayload strips orphaned leading assistant turn & empty SSE emits bracket-free fallback + done', async () => {
+  resetRateLimitForTests();
+  resetClusterHealthForTests();
+
+  const turns = [];
+  for (let i = 0; i < 30; i += 1) {
+    turns.push({ role: i % 2 === 0 ? 'user' : 'assistant', content: `m_${i}` });
+  }
+  turns.push({ role: 'user', content: 'latest' });
+  const sanitized = sanitizeChatPayload({ messages: turns });
+  assert.equal(sanitized.messages.length, 19);
+  assert.equal(sanitized.messages[0].role, 'user');
+  assert.equal(sanitized.lastUserMessage, 'latest');
+
+  const env = {
+    XFY_UPSTREAM_URLS: 'https://node1.example/v1',
+    XFY_SERVICE_KEY: 'test_bearer_key',
+  };
+  const emptyMockFetch = async () =>
+    new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } });
+
+  const chatRes = await handleChatRequest(
+    new Request('https://xfy.tospeak.top/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.42' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: '在吗' }] }),
+    }),
+    {},
+    { env, fetchImpl: emptyMockFetch }
+  );
+  assert.equal(chatRes.status, 200);
+  const sse = await chatRes.text();
+  assert.ok(sse.includes('event: bubble'));
+  assert.ok(sse.includes('event: done'));
+  assert.ok(sse.includes('信号刚晃了一下，你再跟我说一遍嘛'));
+  assert.equal(sse.includes('（'), false);
+});

@@ -9,6 +9,10 @@ Paper-and-ink IM web frontend and Edge API proxy featuring the **2D Persona Orb 
 `server/pc2_split_phase_server.py` mounts `web/public/` alongside `/api/status`, `/api/cluster`, and `/api/chat` automatically—no Node.js process required:
 
 ```bash
+# Primary recommendation (>= 16 GB VRAM / 24 GB+ Mac): Q8_0 + 5 LoRAs (~12.9 GiB VRAM)
+python server/launch_local.py --preset 12b --auto-download-llama --open
+
+# 12 GB VRAM GPUs (RTX 3060 / 4070 12GB): custom UD-Q4_K_XL-xfy (~8.5-8.9 GiB VRAM)
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 # Opens http://127.0.0.1:8081/ directly
 ```

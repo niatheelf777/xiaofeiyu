@@ -105,6 +105,16 @@ PRESETS: dict[str, ModelPreset] = {
         tokenizer_hf_repo="unsloth/gemma-4-12B-it",
         default_ctx_size=16384,
     ),
+    "12b-q8": ModelPreset(
+        name="12b-q8",
+        model_family="12b",
+        base_hf_repo="ggml-org/gemma-4-12B-it-GGUF",
+        base_gguf_file="gemma-4-12B-it-Q8_0.gguf",
+        adapters_hf_repo="niatheelf777/xiaofeiyu-12b-v4",
+        tokenizer_hf_repo="unsloth/gemma-4-12B-it",
+        default_ctx_size=16384,
+        lora_subdir="12b",
+    ),
     "12b-q4": ModelPreset(
         name="12b-q4",
         model_family="12b",

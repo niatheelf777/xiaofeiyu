@@ -19,34 +19,45 @@ tags:
   - gguf
   - companion
   - 12gb-vram
+  - 16gb-vram
   - xiaofeiyu
 ---
 
-# Xiaofeiyu 12B v4 (小肥鱼 12B 主力全能版 — 12GB Consumer GGUF + 5-Slider Split-Phase Voice Suite)
+# Xiaofeiyu 12B v4 (小肥鱼 12B 主力打磨版 — `Q8_0` High-Precision Primary + `12 GB` Custom Dynamic GGUF)
 
-> **微调不降智的中文微信短气泡伴侣模型（`google/gemma-4-12B-it`）**：采用 **Split-Phase 脑声分相架构**——模型在 `<|channel>thought` 思考、`calc_python` 算账与 `send_code_or_doc` 写代码时全程保持 **`LoRA = 0.0` 原厂满血智商（`GEN1..5 = 5/5`）**；仅在 `<|"|>` 口语短气泡区间动态挂载 5 枚轻量 `.gguf` 声带卡带（`s0` 原版日常 + `c1` 粘人猫娘 + `c2` 年上御姐 + `c3` 恶劣雌小鬼 + `c4` 易碎依赖），在一张 **`RTX 3060 12GB` / `RTX 4070 12GB`** 消费卡上即可跑满自然中文短句聊天与高质量编程辅助。
+> **公网试玩站 [`xfy.tospeak.top`](https://xfy.tospeak.top) 同款主力打磨版（`google/gemma-4-12B-it`）**：采用 **Split-Phase 脑声分相架构**——模型在 `<|channel>thought` 思考、`calc_python` 算账与 `send_code_or_doc` 写代码时全程保持 **`LoRA = 0.0` 原厂满血智商（`GEN1..5 = 5/5`）**；仅在 `<|"|>` 口语短气泡区间动态挂载 5 枚轻量 `.gguf` 声带卡带（`s0` 原版日常 + `c1` 粘人猫娘 + `c2` 年上御姐 + `c3` 恶劣雌小鬼 + `c4` 易碎依赖）。
+>
+> **精度推荐原则**：`≥ 16 GB` 显存显卡与 `24 GB+` Mac **强烈优先选用未经过低比特压缩的高精度底模 `gemma-4-12B-it-Q8_0.gguf`（或 `BF16` 原版）挂载 5 枚 LoRA**（`--preset 12b` / `12b-q8`，总显存约 `12.8–13.0 GiB`），以保留最细腻的微表情与语气推拉；`RTX 3060 / 4070 12GB` 等显存受限显卡则选用本仓专为 12GB 环境打造的 BF16 `imatrix` 特制动态量化版 **`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`**（`--preset 12b-q4`，总显存约 `8.5–8.9 GiB`）。
 
-> **English Summary**: `niatheelf777/xiaofeiyu-12b-v4` pairs five thin upper-layer non-QKV `.gguf` LoRA voice cartridges (`L36..47`, `24.3 MiB` each) with a BF16-derived dynamic `llama-imatrix` `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB` file, `~8.9 GiB` total VRAM with all 5 LoRAs + Q8 KV cache). Reasoning and code generation run at `LoRA = 0.0` (`GEN1..5 = 5/5`), while spoken Mandarin IM bubbles mix five persona sliders in real time on a single `llama-server` instance (`0` stage brackets, `0` comma-spam collapse).
+> **English Summary**: `niatheelf777/xiaofeiyu-12b-v4` is our battle-tested online production model powering [xfy.tospeak.top](https://xfy.tospeak.top). For `≥ 16 GB` GPUs and `24 GB+` Apple Silicon Macs, we **strongly recommend pairing the 5 `.gguf` LoRA cartridges (`L36..47`, `24.3 MiB` each) with high-precision `gemma-4-12B-it-Q8_0.gguf` (or `BF16`)** (`--preset 12b` / `--preset 12b-q8`, `~12.8–13.0 GiB` total VRAM w/ 8k KV) to preserve full emotional subtext and bubble rhythm without 4-bit degradation. For `12 GB` VRAM-constrained cards (`RTX 3060 12GB`, `RTX 4070 12GB`), use our custom BF16-derived `llama-imatrix` **`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`** (`--preset 12b-q4`, `~8.5–8.9 GiB` total VRAM).
 
-## Xiaofeiyu (小肥鱼) Family Navigation / 家族矩阵导航
+## Xiaofeiyu (小肥鱼) Family Navigation / 家族导航
 
 | 组件 / 仓库 | 定位与显存门槛 | 链接 |
 | :--- | :--- | :--- |
-| **12B 主力全能版** | `RTX 3060 / 4070 12GB` 首选单模（`UD-Q4_K_XL` `~8.9 GiB` 显存，代码推理 `5/5`） | **`xiaofeiyu-12b-v4`（当前仓 · 12B 主力全能版）** |
-| **26B-A4B 极速 MoE 版** | `4B` 激活参数高吞吐 MoE（16GB `UD-Q4_K_XL` / `IQ4_XS`；12GB `UD-IQ3_M`） | [`xiaofeiyu-26b-a4b`（26B-A4B 极速 MoE 版）](https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b) |
-| **E4B 通用声带翻译核** | `302 ms` 零思考口语翻译旁路（`~5.3 GiB`），外挂 DeepSeek / Claude / GPT 零改代码 | [`xiaofeiyu-translator-e4b`（E4B 302ms 通用声带翻译核）](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b) |
+| **12B 主力打磨版** | `≥ 16 GB` 首选 `Q8_0` 原版挂 LoRA（`~12.9 GiB`）；`12 GB` 显卡选特制 `UD-Q4_K_XL-xfy`（`~8.5–8.9 GiB`） | **`xiaofeiyu-12b-v4`（当前仓 · 线上同款主力版）** |
+| **E4B 通用声带翻译核** | `6–8 GB` 小显存适用（`~5.3 GiB`），外挂 DeepSeek / Claude / GPT 以 `302 ms` 改写短气泡（代码 `0%` 改写） | [`xiaofeiyu-translator-e4b`（E4B 通用声带翻译核）](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b) |
 | **在线二维性格球试玩** | 免下载直接拖拽性格球体验五滑条实时混音与代码/算账分相 | [https://xfy.tospeak.top](https://xfy.tospeak.top) |
 | **GitHub 一键本地启动仓** | 内置 `:8081` 纸墨风性格球网页 + OpenAI `/v1` 网关 + `DSH` 双模插件 | [github.com/niatheelf777/xiaofeiyu](https://github.com/niatheelf777/xiaofeiyu) |
-| **HuggingFace 官方合集** | 小肥鱼全系 GGUF 底座与五槽口语卡带总览 | [Xiaofeiyu Spoken Persona Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) |
+| **HuggingFace 官方合集** | 小肥鱼主力底座与五槽口语卡带总览 | [Xiaofeiyu Spoken Persona Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) |
 
-## Hardware & Consumer GGUF Fit (`RTX 3060 / 4070 12GB` Ready)
+## Three-Tier Hardware & Precision Hierarchy
 
-Quantizing directly from the exact `BF16` `google/gemma-4-12B-it` checkpoint with `llama-imatrix --parse-special` (protecting `token_embd`, `attn_v`, `ffn_down`, and edge layers `blk.{0,1,46,47}` in `Q6_K`) eliminates the comma-spam collapse seen when pairing BF16-trained LoRAs with drifted `QAT Q4_0` weights. All VRAM numbers below are measured on `llama-server` (`-ngl 99 -fa on --cache-ram 0 -ctk q8_0 -ctv q8_0`) with all 5 `.gguf` LoRA cartridges preloaded simultaneously:
+1. **#1 Primary Recommendation — `Q8_0` (or `BF16`) Base + 5 LoRAs (`≥ 16 GB` VRAM / `24 GB+` Mac, `--preset 12b` / `12b-q8`)**
+   - Uses `ggml-org/gemma-4-12B-it-GGUF` (`gemma-4-12B-it-Q8_0.gguf`, `12.22 GiB`) + 5 `.gguf` LoRA cartridges from this repo (`~12.8–13.0 GiB` total VRAM w/ 8k KV).
+   - **Exact precision running on `xfy.tospeak.top`**: zero 4-bit loss on micro-expressions, subtext granularity, and short-bubble rhythm (`20/25` held-out `eval_25`).
+2. **Dedicated `12 GB` VRAM Sweet Spot — Custom `UD-Q4_K_XL-xfy` (`12 GB` GPUs / heavy-WDDM `16 GB` Windows / `16 GB` Mac, `--preset 12b-q4`)**
+   - Because `12B Q8_0` (`~13 GiB`) cannot fit inside `12 GB` VRAM, we quantized `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB` file, `~8.5–8.9 GiB` total VRAM w/ 5 LoRAs + 8k KV) directly from `BF16` using `llama-imatrix --parse-special` on Mandarin IM + code + native Gemma 4 tool/thought turns (protecting `token_embd`, `attn_v`, `ffn_down`, and edge bubble-boundary layers `blk.{0,1,46,47}` in `Q6_K`, eliminating `Q4_0` comma-spam collapse).
+3. **`6–8 GB` Small-VRAM Sidecar — Cloud Brain + Local `4B` Voice Translator (`--preset e4b`)**
+   - Pair [`niatheelf777/xiaofeiyu-translator-e4b`](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b) (`gemma-4-E4B-it-Q8_0.gguf` + 5 LoRAs, `~5.3 GiB` VRAM) with DeepSeek / Claude / GPT via `@xiaofeiyu/openai-voice-proxy`.
 
-| Edition | File | File Size | `ctx=4096` VRAM (`L4`) | `ctx=8192` VRAM (`L4`) | L4 Decode (`p50`) | `GEN1..5` | Held-Out `eval_25` | Target GPUs |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`12b-q4`** *(Recommended)* | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` *(in this repo)* | `7.72 GiB` | `8.47 GiB` | `8.51 GiB` | `25.6 tok/s` | `5/5` | `19/25` (`0` comma collapse) | **`RTX 3060 12GB`**, **`RTX 4070 12GB`**, `RTX 4060 Ti 16GB` |
-| **`12b`** *(Reference `Q8_0`)* | `ggml-org/gemma-4-12B-it-GGUF` (`Q8_0`) | `12.22 GiB` | — | `12.84 GiB` (`-np 2`) | `17.9 tok/s` | `4/5` | `20/25` | `RTX 4060 Ti 16GB`, `NVIDIA L4 24GB`, Apple Silicon `24GB+` |
+All VRAM measurements below were captured on `llama-server` (`-ngl 99 -fa on --cache-ram 0 -ctk q8_0 -ctv q8_0`) with all 5 `.gguf` LoRA cartridges preloaded simultaneously:
+
+| Tier | Preset | Base GGUF | File Size | Total VRAM (5 LoRAs + 8k KV) | Held-Out `eval_25` | `GEN1..5` | Target Hardware |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. 首选推荐 (`Q8_0`)** | `12b` / `12b-q8` | `ggml-org/gemma-4-12B-it-GGUF` (`Q8_0`) | `12.22 GiB` | `~12.8–13.0 GiB` | **`20/25`** | `4/5`–`5/5` | **`RTX 4060 Ti 16GB`**, `4070 Ti SUPER`, `4080 / 4090 / 3090`, `Mac 24GB+` |
+| **2. `12 GB` 甜点定制 (`UD-Q4_K_XL-xfy`)** | `12b-q4` | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` *(in this repo)* | `7.72 GiB` | `~8.5–8.9 GiB` | `19/25` (`0` comma collapse) | `5/5` | **`RTX 3060 12GB`**, **`RTX 4070 / 4070 SUPER 12GB`**, heavy-WDDM `16GB` Windows, `Mac 16GB` |
+| **3. `6–8 GB` 外挂代理 (`E4B Q8_0`)** | `e4b` | `ggml-org/gemma-4-E4B-it-GGUF` (`Q8_0`) | `4.65 GiB` | `~5.3 GiB` | — | Upstream Brain | `RTX 3060 8GB`, `RTX 4060 8GB`, ultrabooks + Cloud API |
 
 ## 3-Minute Turnkey Quickstart (Built-in `:8081` 2D Persona Orb Web UI + Dual-Mode `DSH`)
 
@@ -56,8 +67,10 @@ Quantizing directly from the exact `BF16` `google/gemma-4-12B-it` checkpoint wit
 git clone https://github.com/niatheelf777/xiaofeiyu.git && cd xiaofeiyu
 pip install tokenizers huggingface_hub
 
-# Auto-downloads llama-server + gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf + 5 voice cartridges
-# and opens the interactive 2D Persona Orb Web UI at http://127.0.0.1:8081/
+# 1. #1 Primary Recommendation (>= 16 GB VRAM / 24 GB+ Mac): Q8_0 base + 5 LoRAs (~12.9 GiB VRAM)
+python server/launch_local.py --preset 12b --auto-download-llama --open
+
+# 2. Dedicated 12 GB VRAM Sweet Spot (RTX 3060 / 4070 12GB): custom UD-Q4_K_XL-xfy (~8.5-8.9 GiB VRAM)
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 ```
 
@@ -75,16 +88,19 @@ node packages/dsh-plugin/scripts/install-dsh.mjs --uninstall --profile web
 ### Option C — Manual `llama-server` (`b8827+` / `v1.0.0+`) Launch
 
 ```bash
+# 1. Primary (16 GB+ VRAM): download Q8_0 base + 5 LoRA cartridges
+hf download ggml-org/gemma-4-12B-it-GGUF gemma-4-12B-it-Q8_0.gguf --local-dir ./xiaofeiyu-12b
 hf download niatheelf777/xiaofeiyu-12b-v4 \
-  gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf \
   s0_xiaofeiyu_backbone.gguf c1_neko_clingy.gguf c2_older_tease.gguf c3_brat_mesugaki.gguf c4_fragile_porcelain.gguf \
   --local-dir ./xiaofeiyu-12b
 
 llama-server \
-  -m ./xiaofeiyu-12b/gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf \
+  -m ./xiaofeiyu-12b/gemma-4-12B-it-Q8_0.gguf \
   --lora ./xiaofeiyu-12b/s0_xiaofeiyu_backbone.gguf,./xiaofeiyu-12b/c1_neko_clingy.gguf,./xiaofeiyu-12b/c2_older_tease.gguf,./xiaofeiyu-12b/c3_brat_mesugaki.gguf,./xiaofeiyu-12b/c4_fragile_porcelain.gguf \
   --lora-init-without-apply -ngl 99 -fa on --cache-ram 0 --special \
-  -ctk q8_0 -ctv q8_0 -c 8192 -np 1 --host 127.0.0.1 --port 8082
+  -ctk q8_0 -ctv q8_0 -c 16384 -np 1 --host 127.0.0.1 --port 8082
+
+# 2. For 12 GB VRAM cards, replace `-m` with `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` from this repo and set `-c 8192`.
 ```
 
 ## Verified Blind Gate Benchmarks (`Xiaofeiyu-12B-v4`)
@@ -100,7 +116,7 @@ llama-server \
 
 | File | Size (Bytes) | SHA256 Prefix | Role |
 | :--- | :--- | :--- | :--- |
-| `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` | `8,285,657,920` | `5402dd418057` | 12 GB consumer dynamic `imatrix` base GGUF |
+| `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` | `8,285,657,920` | `5402dd418057` | Dedicated `12 GB` GPU custom `imatrix` base GGUF |
 | `s0_xiaofeiyu_backbone.gguf` | `25,434,912` | `fe2a5cc4ad2e` | Slot 0 Voice Core LoRA (`L36..47` non-QKV, DPO-polished) |
 | `s0_xiaofeiyu_v4_1_dpo.gguf` | `25,434,912` | `fe2a5cc4ad2e` | Versioned alias of Slot 0 |
 | `c1_neko_clingy.gguf` | `25,434,912` | `5f78a32dff72` | Slot 1 (`粘人猫娘` — Clingy Catgirl) |

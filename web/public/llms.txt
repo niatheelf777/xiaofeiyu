@@ -1,6 +1,6 @@
 # Xiaofeiyu (小肥鱼) — Gemma 4 Split-Phase 5-Slider Spoken Persona Engine
 
-> Xiaofeiyu (小肥鱼) is an open-source Mandarin IM companion and spoken-persona engine built on Google Gemma 4 (`12B`, `26B-A4B` MoE, and `E4B`). It solves the two classic roleplay LLM failures—stage-bracket/emoji "AI slop" (`（叹气）`, `*sighs*`, verbose essays) and fine-tuning "code/math lobotomy"—by decoupling Brain and Voice within a single token stream: `<|channel>thought` reasoning, `calc_python`, and `send_code_or_doc` execute at **zero LoRA (`LoRA = 0.0`)** with 100% base Gemma 4 intelligence, while five composable `.gguf` LoRA voice cartridges (`s0` + `c1..c4`) activate strictly inside `<|"|>` spoken IM chat bubbles on 12 GB+ consumer GPUs.
+> Xiaofeiyu (小肥鱼) is an open-source Mandarin IM companion and spoken-persona engine built on Google Gemma 4 (`12B` flagship and `E4B` voice sidecar). It solves the two classic roleplay LLM failures—stage-bracket/emoji "AI slop" (`（叹气）`, `*sighs*`, verbose essays) and fine-tuning "code/math lobotomy"—by decoupling Brain and Voice within a single token stream: `<|channel>thought` reasoning, `calc_python`, and `send_code_or_doc` execute at **zero LoRA (`LoRA = 0.0`)** with 100% base Gemma 4 intelligence, while five composable `.gguf` LoRA voice cartridges (`s0` + `c1..c4`) activate strictly inside `<|"|>` spoken IM chat bubbles.
 
 - Live Interactive Demo (2D Persona Orb Web UI): https://xfy.tospeak.top/
 - GitHub Source & Turnkey Local Launcher: https://github.com/niatheelf777/xiaofeiyu
@@ -8,25 +8,28 @@
 - Static Documentation & GPU Selection Guide: https://niatheelf777.github.io/xiaofeiyu/
 - Complete AI/Search Reference (`llms-full.txt`): https://xfy.tospeak.top/llms-full.txt
 
-## Official HuggingFace Model & Quantization Family (`niatheelf777`)
+## 3-Tier Hardware & Quantization Hierarchy (`niatheelf777`)
 
-- [Xiaofeiyu 12B v4 (12GB Consumer Flagship)](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4): 5-slot `L36..47` non-QKV `.gguf` voice cartridges +BF16-derived dynamic imatrix `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB` file, `~8.86 GiB` total VRAM w/ 5 LoRAs + Q8 KV on `RTX 3060 12GB` / `RTX 4070 12GB`).
-- [Xiaofeiyu 26B-A4B v2 (High-Speed MoE — 4B Active Params)](https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b): 5-slot `.gguf` voice cartridges + three BF16-derived dynamic imatrix GGUFs: `gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf` (`13.36 GiB`, `~14.64 GiB` VRAM for `RTX 4060 Ti 16GB` / `L4 24GB`), `gemma-4-26B-A4B-it-UD-IQ4_XS-xfy.gguf` (`13.09 GiB`, `~14.36 GiB` VRAM for Windows WDDM 16GB), and `gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf` (`9.03 GiB`, `~10.31 GiB` VRAM for `RTX 3060 / 4070 12GB`).
-- [Xiaofeiyu Translator E4B (302ms Universal Voice Proxy Sidecar)](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b): Lightweight `4B` (`google/gemma-4-E4B-it`, `~5.3 GiB` VRAM) 5-slider spoken-bubble translator that pairs with DeepSeek, Claude, GPT, or Qwen via `@xiaofeiyu/openai-voice-proxy` without touching fenced code or tool calls (`0%` code alteration).
+1. **#1 Primary Recommendation — High-Precision `Q8_0` (or `BF16`) Base + 5 LoRAs (`≥ 16 GB` VRAM / `24 GB+` Mac)**
+   - [Xiaofeiyu 12B v4](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) (`--preset 12b` / `--preset 12b-q8`): Pairs `gemma-4-12B-it-Q8_0.gguf` (or `BF16`) with 5 `L36..47` non-QKV `.gguf` LoRA cartridges (`~12.8–13.0 GiB` total VRAM w/ 8k KV). Exact precision powering `https://xfy.tospeak.top/`—zero 4-bit degradation on emotional push-pull, subtext granularity, and short-bubble rhythm. Recommended on `RTX 4060 Ti 16GB`, `RTX 4070 Ti SUPER 16GB`, `RTX 4080 / 4090 / 3090`, and Apple Silicon `24GB+`.
+2. **Dedicated `12 GB` VRAM Sweet Spot — Custom BF16 `imatrix` Dynamic Quant (`12 GB` GPUs / heavy-WDDM `16 GB` Windows / `16 GB` Mac)**
+   - [Xiaofeiyu 12B v4 (`12b-q4`)](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) (`--preset 12b-q4`): `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB` file, `~8.5–8.9 GiB` total VRAM w/ 5 LoRAs + 8k KV), calibrated from `BF16` on Mandarin IM + tool turns protecting `token_embd`, `attn_v`, and bubble-boundary layers to prevent `Q4_0` comma-spam collapse on `RTX 3060 12GB` and `RTX 4070 / 4070 SUPER 12GB`.
+3. **`6–8 GB` Small-VRAM Sidecar — Cloud Brain + Local `4B` Voice Translator (`RTX 3060 8GB` / `4060 8GB` / ultrabooks)**
+   - [Xiaofeiyu Translator E4B](https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b) (`--preset e4b`): `gemma-4-E4B-it-Q8_0.gguf` + 5 LoRAs (`~5.3 GiB` VRAM) paired with DeepSeek, Claude, GPT, or Qwen via `@xiaofeiyu/openai-voice-proxy` (`302 ms` median latency, `0%` code-block or tool-call alteration).
 
 ## 1-Command Local Quickstart
 
 ```bash
 git clone https://github.com/niatheelf777/xiaofeiyu.git && cd xiaofeiyu
 pip install tokenizers huggingface_hub
-# 12GB GPU (RTX 3060 / 4070): auto-downloads llama-server + 12B UD-Q4_K_XL-xfy.gguf + 5 LoRAs & opens http://127.0.0.1:8081/
+# 1. Primary Recommendation (>= 16GB VRAM / 24GB+ Mac): Q8_0 base + 5 LoRAs (~12.9 GiB)
+python server/launch_local.py --preset 12b --auto-download-llama --open
+# 2. Dedicated 12GB GPU Sweet Spot (RTX 3060 / 4070 12GB): custom UD-Q4_K_XL-xfy (~8.5-8.9 GiB)
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
-# 16GB+ GPU (RTX 4060 Ti 16GB / L4 24GB): high-throughput 26B-A4B MoE
-python server/launch_local.py --preset 26b-a4b --auto-download-llama --open
 ```
 
 ## Core Capabilities (中文摘要)
 
+- **显存允许首选 `Q8_0` 高精度挂 LoRA**：`16 GB+` 显卡与 `24 GB+` Mac 首选 `--preset 12b`（或 `12b-q8`），还原公网试玩站 `xfy.tospeak.top` 同款无损语气推拉；`12 GB` 显存受限卡选用特制 `UD-Q4_K_XL-xfy`（`--preset 12b-q4`，约 `8.5–8.9 GiB`）；`6–8 GB` 小显存可用 `E4B` 声带代理外挂云端大脑。
 - **微调不降智（Split-Phase 脑声解耦）**：思考链、Python 沙箱算账与代码卡全程 `LoRA = 0.0` 原厂智商运行（`GEN1..5 = 5/5`），仅在微信短气泡 `<|"|>` 区间挂载口语声带（`0%` 动作括号/Emoji 戏精污染）。
 - **五滑条无重启实时混音**：单次 OpenAI 请求通过 `model="xiaofeiyu-v4|w0,w1,w2,w3,w4"` 连续混调「原版日常 (`s0`) + 粘人猫娘 (`c1`) + 年上御姐 (`c2`) + 恶劣雌小鬼 (`c3`) + 易碎依赖 (`c4`)」。
-- **三种开箱姿势**：① 内置 `:8081` 纸墨风二维性格球网页（零 Node 依赖）；② `DeepSeek Harness (DSH)` 免插件直连或 `@xiaofeiyu/dsh-plugin` 原生气泡+调音台插件；③ `E4B` 通用口语翻译代理外挂任意闭源/开源前沿大模型。

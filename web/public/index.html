@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>小肥鱼 (Xiaofeiyu) · Gemma 4 五滑条人格混音与不降智中文伴侣对话引擎</title>
-  <meta name="description" content="小肥鱼 (Xiaofeiyu) 是基于 Google Gemma 4 的开源中文伴侣与微信短气泡口语引擎：采用 Split-Phase 脑声解耦架构，推理、算账与写代码全程零 LoRA 保持 100% 原厂智商，仅在气泡内实时无重启混音五种性格（日常/粘人猫娘/年上御姐/恶劣雌小鬼/易碎依赖），12GB 消费级显卡一键运行。">
-  <meta name="keywords" content="小肥鱼,Xiaofeiyu,Gemma 4,中文角色扮演大模型,开源AI伴侣,AI女友模型,Split-Phase,不降智微调,Multi-LoRA,GGUF,llama.cpp,RTX 3060 12GB,RTX 4070,DeepSeek Harness,OpenAI兼容">
+  <meta name="description" content="小肥鱼 (Xiaofeiyu) 是基于 Google Gemma 4 的开源中文伴侣与微信短气泡口语引擎：采用 Split-Phase 脑声解耦架构，推理、算账与写代码全程零 LoRA 保持 100% 原厂智商，16GB+ 显卡首选 Q8_0 高精度挂五滑条 LoRA，12GB 显卡可用特制动态量化版一键运行。">
+  <meta name="keywords" content="小肥鱼,Xiaofeiyu,Gemma 4,中文角色扮演大模型,开源AI伴侣,AI女友模型,Split-Phase,不降智微调,Multi-LoRA,GGUF,llama.cpp,RTX 4060 Ti 16GB,RTX 3060 12GB,RTX 4070,DeepSeek Harness,OpenAI兼容">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://xfy.tospeak.top/">
   <link rel="alternate" type="text/plain" title="LLMs Summary" href="https://xfy.tospeak.top/llms.txt">
@@ -14,7 +14,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="小肥鱼 Xiaofeiyu">
   <meta property="og:title" content="小肥鱼 (Xiaofeiyu) · 写代码不降智的五滑条中文伴侣对话引擎">
-  <meta property="og:description" content="基于 Gemma 4 Split-Phase 脑声解耦：思考与写代码零 LoRA 满血运行，仅在短气泡内实时混音五种性格，RTX 3060 / 4070 12GB 显卡一键本地启动。">
+  <meta property="og:description" content="基于 Gemma 4 Split-Phase 脑声解耦：16GB+ 首选 Q8_0 高精度挂 LoRA，12GB 显卡特制动态量化畅跑，思考与写代码零 LoRA 满血运行。">
   <meta property="og:url" content="https://xfy.tospeak.top/">
   <meta property="og:image" content="https://xfy.tospeak.top/og-card.png">
   <meta property="og:image:width" content="1200">
@@ -26,7 +26,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="小肥鱼 (Xiaofeiyu) · Gemma 4 Split-Phase 五滑条口语对话引擎">
-  <meta name="twitter:description" content="告别括号戏精腔与微调降智：推理与代码 100% 原厂智商，五滑条无重启实时混音真人微信短气泡，12GB 显卡畅跑。">
+  <meta name="twitter:description" content="告别括号戏精腔与微调降智：16GB+ 首选 Q8_0 高精度挂 LoRA，12GB 显卡特制动态量化畅跑，推理与代码 100% 原厂智商。">
   <meta name="twitter:image" content="https://xfy.tospeak.top/og-card.png">
 
   <link rel="stylesheet" href="/styles.css">
@@ -47,7 +47,7 @@
         "codeRepository": "https://github.com/niatheelf777/xiaofeiyu",
         "image": "https://xfy.tospeak.top/og-card.png",
         "inLanguage": ["zh-CN", "en"],
-        "description": "Open-source Split-Phase 5-slider Mandarin IM companion and voice engine for Google Gemma 4 (12B, 26B-A4B MoE, E4B). Runs reasoning, tool calls, and code generation at LoRA=0.0 to preserve 100% base intelligence while mixing five spoken personas in real time inside chat bubbles on 12GB+ consumer GPUs.",
+        "description": "Open-source Split-Phase 5-slider Mandarin IM companion and voice engine for Google Gemma 4 (12B flagship and E4B voice sidecar). Runs reasoning, tool calls, and code generation at LoRA=0.0 to preserve 100% base intelligence; Q8_0 + 5 LoRAs primary on 16GB+ GPUs / 24GB+ Macs, custom UD-Q4_K_XL-xfy on 12GB GPUs.",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -67,10 +67,10 @@
           },
           {
             "@type": "Question",
-            "name": "12GB 和 16GB 消费级显卡（如 RTX 3060 / 4070 / 4060 Ti）应该选哪个量化包？",
+            "name": "16GB+ 和 12GB 消费级显卡（如 RTX 4060 Ti 16GB / RTX 3060 12GB / 4070）应该选哪个精度版本？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "RTX 3060 12GB 与 RTX 4070 12GB 推荐运行 niatheelf777/xiaofeiyu-12b-v4 中的 gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf（7.72 GiB，含 5 枚卡带与 Q8 KV 总显存约 8.9 GiB），或运行 niatheelf777/xiaofeiyu-26b-a4b 中的 MoE 包 gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf（9.03 GiB，总显存约 10.3 GiB）。RTX 4060 Ti 16GB 与 24GB 显卡推荐运行 gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf（13.36 GiB，总显存约 14.6 GiB）或 UD-IQ4_XS-xfy.gguf。"
+              "text": "16GB 及以上显存显卡或 24GB+ Apple Silicon Mac 首选高精度原版底模 gemma-4-12B-it-Q8_0.gguf（或 BF16）挂载 niatheelf777/xiaofeiyu-12b-v4 的 5 枚 LoRA 卡带（--preset 12b，含 8k KV 总显存约 12.8–13.0 GiB），与公网试玩站 xfy.tospeak.top 同款细腻度。12GB 显卡（RTX 3060 12GB / RTX 4070 12GB）或高桌面占用的 16GB Windows 环境推荐特制动态量化版 gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf（--preset 12b-q4，总显存约 8.5–8.9 GiB）。6–8GB 小显存显卡可用 E4B 声带代理（--preset e4b，约 5.3 GiB）外挂云端大模型。"
             }
           },
           {
@@ -78,7 +78,7 @@
             "name": "如何在本地一键启动二维性格球网页或接入 DeepSeek Harness (DSH)？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "克隆 github.com/niatheelf777/xiaofeiyu 后，运行 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open 即可自动拉取预编译 llama-server、量化底模与五枚性格卡带，并在 http://127.0.0.1:8081/ 打开内置二维性格球网页（同时提供 /v1 OpenAI 接口与 DSH 双模式插件）。"
+              "text": "克隆 github.com/niatheelf777/xiaofeiyu 后，16GB+ 显卡首选运行 python server/launch_local.py --preset 12b --auto-download-llama --open（12GB 显卡改用 --preset 12b-q4）即可自动拉取预编译 llama-server、底模与五枚性格卡带，并在 http://127.0.0.1:8081/ 打开内置二维性格球网页（同时提供 /v1 OpenAI 接口与 DSH 双模式插件）。"
             }
           }
         ]

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>小肥鱼 (Xiaofeiyu) · Gemma 4 五滑条人格混音与不降智中文伴侣对话引擎</title>
-  <meta name="description" content="小肥鱼 (Xiaofeiyu) 是基于 Google Gemma 4 的开源中文伴侣与微信短气泡口语引擎：采用 Split-Phase 脑声解耦架构，推理与写代码全程零 LoRA 保持 100% 原厂智商，12GB/16GB 消费级显卡一键运行。">
+  <meta name="description" content="小肥鱼 (Xiaofeiyu) 是基于 Google Gemma 4 的开源中文伴侣与微信短气泡口语引擎：16GB+ 显卡首选 Q8_0 高精度底模挂 5 枚 LoRA 还原满血语感，12GB 显卡选用特制 imatrix 动态量化版，推理与写代码全程零 LoRA 保持 100% 原厂智商。">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <link rel="canonical" href="https://niatheelf777.github.io/xiaofeiyu/">
   <link rel="alternate" type="text/plain" title="LLMs Summary" href="https://niatheelf777.github.io/xiaofeiyu/llms.txt">
@@ -12,14 +12,14 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="小肥鱼 Xiaofeiyu">
   <meta property="og:title" content="小肥鱼 (Xiaofeiyu) · 写代码不降智的五滑条中文伴侣对话引擎">
-  <meta property="og:description" content="Gemma 4 Split-Phase 脑声解耦：思考与写代码零 LoRA 满血运行，五滑条实时混音真人短气泡，RTX 3060 / 4070 12GB 显卡一键本地启动。">
+  <meta property="og:description" content="Gemma 4 Split-Phase 脑声解耦：16GB+ 首选 Q8_0 高精度底模挂 LoRA，12GB 甜点卡跑特制动态量化版，思考与写代码零 LoRA 满血运行。">
   <meta property="og:url" content="https://niatheelf777.github.io/xiaofeiyu/">
   <meta property="og:image" content="https://niatheelf777.github.io/xiaofeiyu/og-card.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="小肥鱼 (Xiaofeiyu) · Gemma 4 Split-Phase 五滑条口语引擎">
-  <meta name="twitter:description" content="告别括号戏精腔与微调降智：推理与代码 100% 原厂智商，五滑条无重启实时混音真人短气泡。">
+  <meta name="twitter:description" content="告别括号戏精腔与微调降智：16GB+ 首选 Q8_0 高精度挂 LoRA，12GB 显卡特制动态量化畅跑。">
   <meta name="twitter:image" content="https://niatheelf777.github.io/xiaofeiyu/og-card.png">
 
   <style>
@@ -43,7 +43,7 @@
     .wrap { max-width: 980px; margin: 0 auto; padding: 56px 24px 72px; }
     .eyebrow { color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: 13px; letter-spacing: 0.06em; }
     h1 { margin: 10px 0 12px; font-size: clamp(32px, 5vw, 46px); letter-spacing: -0.02em; }
-    .lead { max-width: 680px; color: var(--sub); font-size: 17px; margin: 0 0 28px; }
+    .lead { max-width: 700px; color: var(--sub); font-size: 17px; margin: 0 0 28px; }
     .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 44px; }
     .btn {
       display: inline-block; padding: 11px 20px; border-radius: 999px; text-decoration: none;
@@ -57,6 +57,10 @@
     th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); }
     th { color: var(--sub); font-weight: 600; background: #F2EFE8; }
     tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent); margin-left: 6px;
+    }
     pre {
       background: #1B2D24; color: #FAF9F4; padding: 18px 20px; border-radius: 14px;
       overflow-x: auto; font-size: 13.5px; line-height: 1.55;
@@ -77,67 +81,54 @@
     "url": "https://xfy.tospeak.top/",
     "codeRepository": "https://github.com/niatheelf777/xiaofeiyu",
     "image": "https://niatheelf777.github.io/xiaofeiyu/og-card.png",
-    "description": "Gemma 4 Split-Phase 5-slider Mandarin IM companion engine: LoRA=0.0 during reasoning and coding, real-time 5-persona mixing inside spoken bubbles on 12GB+ GPUs."
+    "description": "Gemma 4 Split-Phase 5-slider Mandarin IM companion engine: LoRA=0.0 during reasoning and coding, Q8_0 primary on 16GB+ GPUs/24GB+ Macs and custom UD-Q4_K_XL-xfy on 12GB GPUs."
   }
   </script>
 </head>
 <body>
   <main class="wrap">
-    <div class="eyebrow">GEMMA 4 · SPLIT-PHASE 5-SLIDER PERSONA ENGINE</div>
+    <div class="eyebrow">XIAOFEIYU-12B-V4 · SPLIT-PHASE 5-SLIDER PERSONA ENGINE</div>
     <h1>小肥鱼 · Xiaofeiyu</h1>
-    <p class="lead">推理与写代码全程零 LoRA 保持 100% 原厂智商，仅在微信式短气泡内实时混音五种性格，12 GB 消费级显卡一行命令启动。</p>
+    <p class="lead">推理与写代码全程零 LoRA 保持 100% 原厂智商，仅在微信式短气泡内实时混音五种性格。显存充裕首选 <code>Q8_0</code> 高精度原版底模挂 LoRA 还原线上同款细腻度，<code>12 GB</code> 显卡选用特制动态量化版一行命令启动。</p>
 
     <div class="actions">
       <a class="btn btn-primary" href="https://xfy.tospeak.top/">在线试玩 · Live Demo</a>
       <a class="btn" href="https://github.com/niatheelf777/xiaofeiyu">GitHub 源码</a>
-      <a class="btn" href="https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4">HF · 12B v4</a>
-      <a class="btn" href="https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b">HF · 26B-A4B MoE</a>
+      <a class="btn" href="https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4">HF · Xiaofeiyu-12B-v4</a>
       <a class="btn" href="https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b">HF · E4B 声带代理</a>
     </div>
 
     <img class="hero-img" src="./showcase/local-webui-turnkey.png" alt="小肥鱼内置二维性格球网页实测：多气泡流式上屏与可复制代码卡">
 
-    <h2>消费级显卡量化选型（12 GB / 16 GB / 24 GB）</h2>
+    <h2>显卡选型与量化精度分级推荐</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>推荐显卡</th>
+            <th>推荐档位与显卡</th>
             <th>启动预设</th>
-            <th>HuggingFace 量化包</th>
-            <th>体积 / 总显存 (含 5 LoRA + Q8 KV)</th>
+            <th>底模与量化方案</th>
+            <th>总显存 (含 5 LoRA + 8k KV) / 定位</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>RTX 3060 / 4070 (12 GB)</strong></td>
+            <td><strong>≥ 16 GB 显卡 / Mac 24GB+</strong><span class="badge">首选推荐</span><br><small>RTX 4060 Ti 16GB · 4070 Ti SUPER · 4080 / 4090 / 3090</small></td>
+            <td><code>--preset 12b</code><br><small>（或 <code>12b-q8</code>）</small></td>
+            <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4"><code>gemma-4-12B-it-Q8_0.gguf</code> + 5 LoRAs</a></td>
+            <td><code>~12.8–13.0 GiB</code> · 线上 <code>xfy.tospeak.top</code> 同款高精度，零低比特颗粒度折损</td>
+          </tr>
+          <tr>
+            <td><strong>12 GB 甜点卡 / 16 GB Windows 高桌面占用</strong><br><small>RTX 3060 12GB · RTX 4070 / 4070 SUPER 12GB · Mac 16GB</small></td>
             <td><code>--preset 12b-q4</code></td>
             <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4"><code>gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf</code></a></td>
-            <td><code>7.72 GiB</code> / <code>~8.9 GiB</code></td>
+            <td><code>~8.5–8.9 GiB</code> · 基于 BF16 中文 <code>imatrix</code> 特制量化，保护分泡与语气层</td>
           </tr>
           <tr>
-            <td><strong>RTX 3060 / 4070 (12 GB MoE)</strong></td>
-            <td><code>--preset 26b-a4b-12g</code></td>
-            <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b"><code>gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf</code></a></td>
-            <td><code>9.03 GiB</code> / <code>~10.3 GiB</code></td>
-          </tr>
-          <tr>
-            <td><strong>RTX 4060 Ti (16 GB WDDM)</strong></td>
-            <td><code>--preset 26b-a4b-iq4xs</code></td>
-            <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b"><code>gemma-4-26B-A4B-it-UD-IQ4_XS-xfy.gguf</code></a></td>
-            <td><code>13.09 GiB</code> / <code>~14.4 GiB</code></td>
-          </tr>
-          <tr>
-            <td><strong>RTX 4060 Ti 16GB / L4 24GB</strong></td>
-            <td><code>--preset 26b-a4b</code></td>
-            <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b"><code>gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf</code></a></td>
-            <td><code>13.36 GiB</code> / <code>~14.6 GiB</code></td>
-          </tr>
-          <tr>
-            <td><strong>任意 6 GB+ 显卡外挂闭源大脑</strong></td>
+            <td><strong>6–8 GB 小显存外挂云端大脑</strong><br><small>RTX 3060 8GB · RTX 4060 8GB · 轻薄本</small></td>
             <td><code>--preset e4b</code></td>
             <td><a href="https://huggingface.co/niatheelf777/xiaofeiyu-translator-e4b"><code>gemma-4-E4B-it-Q8_0.gguf</code> + 5 LoRAs</a></td>
-            <td><code>4.65 GiB</code> / <code>~5.3 GiB</code></td>
+            <td><code>~5.3 GiB</code> · 搭配 DeepSeek / Claude / GPT，<code>302 ms</code> 改写短气泡（代码 <code>0%</code> 改写）</td>
           </tr>
         </tbody>
       </table>
@@ -146,6 +137,11 @@
     <h2>3 分钟本地一键启动</h2>
     <pre><code>git clone https://github.com/niatheelf777/xiaofeiyu.git &amp;&amp; cd xiaofeiyu
 pip install tokenizers huggingface_hub
+
+# 首选推荐（&gt;= 16 GB 显卡 / 24 GB+ Mac）：Q8_0 高精度原版底模挂 5 枚 LoRA
+python server/launch_local.py --preset 12b --auto-download-llama --open
+
+# 12 GB 显存受限显卡（RTX 3060 / 4070 12GB）：特制 BF16 imatrix 动态量化版
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open</code></pre>
 
     <footer>

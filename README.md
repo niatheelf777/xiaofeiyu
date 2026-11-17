@@ -8,20 +8,34 @@
 
 ---
 
+## 显卡选型与量化精度推荐指南（三级分层）
+
+[`niatheelf777/xiaofeiyu-12b-v4`](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) 是已在公网试玩站 [`xfy.tospeak.top`](https://xfy.tospeak.top) 长期实战打磨的主力版本。不同显存容量的消费级硬件按如下精度梯度选用：
+
+| 推荐档位 | 适用硬件 | 启动预设 | 底模与量化精度 | 含 5 枚 LoRA + 8k KV 总显存 | 核心定位 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. 首选推荐 · 高精度原版底模挂 LoRA** | `≥ 16 GB` 显卡（`RTX 4060 Ti 16GB`、`4070 Ti SUPER`、`4080` / `4090` / `3090`）、`Mac 24GB+` | `--preset 12b`（或 `--preset 12b-q8`） | `gemma-4-12B-it-Q8_0.gguf`（或 `BF16` 原版）+ 5 枚 `.gguf` LoRA | `~12.8–13.0 GiB` | **公网 `xfy.tospeak.top` 同款高精度配置**：未经低比特量化压缩，微表情与潜台词颗粒度零折损，语气推拉与短气泡节奏最完整细腻 |
+| **2. `12 GB` 显卡专属甜点 · 特制动态量化** | `RTX 3060 12GB`、`RTX 4070 / 4070 SUPER 12GB`、`16 GB` Windows 高桌面占用环境、`Mac 16GB` | `--preset 12b-q4` | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` + 5 枚 `.gguf` LoRA | `~8.5–8.9 GiB` | **针对 `12 GB` 显存受限环境专项标定**：基于 `BF16` 原版配合中文对话与工具校准集制作 `imatrix` 动态量化，重点保护 `token_embd`、`attn_v` 与分泡边界层，避免普通 `Q4_0` 逗号失控与语气崩坏 |
+| **3. `6–8 GB` 小显存外挂 · 云端大脑 + 本地 `4B` 声带** | `RTX 3060 8GB`、`RTX 4060 8GB`、轻薄本 / 核显 | `--preset e4b` | `gemma-4-E4B-it-Q8_0.gguf` + 5 枚 `.gguf` LoRA | `~5.3 GiB` | **保留云端推理大脑**：DeepSeek / Claude / GPT 负责思考与写代码，本地 `4B` 声带核以 `302 ms` 中位延迟实时改写短气泡口吻 |
+
+![显卡选型与量化精度推荐指南：16GB+ 首选 Q8_0 挂 LoRA，12GB 甜点卡选特制 imatrix 动态量化](assets/showcase/consumer-gpu-guide.png)
+
+---
+
 ## 3 分钟上手：三种开箱即用姿势
 
-从 Hugging Face 下载 [`niatheelf777/xiaofeiyu-12b-v4`](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) 的 5 枚轻量卡带至 `loras/12b/`，并将 Gemma 4 GGUF 底模放入 `models/`（依赖仅需 `pip install tokenizers`）：
+先安装最小 Python 依赖：`pip install tokenizers huggingface_hub`（`launch_local.py` 会自动拉取底模、[`niatheelf777/xiaofeiyu-12b-v4`](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) 的 5 枚轻量卡带及官方预编译 `llama-server`）。
 
 ### 姿势一：一行命令启动内置二维性格球网页（零 Node 依赖）
 
-`pc2_split_phase_server.py` 已内置完整纸墨风二维性格球盘前端，`launch_local.py` 可自动拉取官方预编译 `llama-server` 并一键拉起前后端：
+`pc2_split_phase_server.py` 已内置完整纸墨风二维性格球盘前端，`launch_local.py` 一键拉起前后端：
 
 ```bash
-# 12 GB 消费级显卡推荐（RTX 3060 / 4070，自动拉取 UD-Q4_K_XL-xfy.gguf + 5 枚卡带，总显存约 8.9 GiB）
-python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
+# 1. 首选推荐（>= 16 GB 显存 / 24 GB+ Mac）：Q8_0 高精度原版底模挂 5 枚 LoRA（与公网试玩站同款细腻度，约 12.9 GiB）
+python server/launch_local.py --preset 12b --auto-download-llama --open
 
-# 16 GB+ 消费级显卡极速 MoE（RTX 4060 Ti 16GB / L4 24GB，26B-A4B UD-Q4_K_XL-xfy.gguf 总显存约 14.6 GiB；12GB 跑 26B 可用 --preset 26b-a4b-12g）
-python server/launch_local.py --preset 26b-a4b --auto-download-llama --open
+# 2. 12 GB 显卡专属甜点（RTX 3060 / 4070 12GB）：特制 BF16 imatrix 动态量化版（约 8.5–8.9 GiB）
+python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 ```
 
 启动后浏览器自动打开 `http://127.0.0.1:8081/`（同时暴露 OpenAI 兼容接口 `http://127.0.0.1:8081/v1`）。如需单独调试前端静态资源，也可运行 `node web/serve_local.mjs --api http://127.0.0.1:8081`。
@@ -47,9 +61,9 @@ node packages/dsh-plugin/scripts/install-dsh.mjs --uninstall --profile web
 
 ![DSH 模式 2 实测：文件读取工具调用、立体微信短气泡、可复制代码卡与顶栏五滑条实时混音面板](assets/showcase/dsh-mode2-mixer.png)
 
-### 姿势三：OpenAI 兼容接口与 `E4B` 通用口语翻译代理
+### 姿势三：OpenAI 兼容接口与 `E4B` 通用口语翻译代理（`6–8 GB` 小显存适用）
 
-不想替换主力推理模型时，可保留 DeepSeek / Claude / GPT 作为上游大脑负责推理、检索与写代码，本地仅用 `4B` 声带模型将自然语言回复实时改写为短气泡口吻（中位延迟 `302 ms`，代码块与工具调用 `0%` 篡改透传）：
+显卡只有 `6–8 GB` 显存，或不想替换主力推理模型时，可保留 DeepSeek / Claude / GPT 作为上游大脑负责推理、检索与写代码，本地仅用 `4B` 声带模型（`gemma-4-E4B-it-Q8_0.gguf` + 5 枚卡带，约 `5.3 GiB` 显存）将自然语言回复实时改写为短气泡口吻（中位延迟 `302 ms`，代码块与工具调用 `0%` 篡改透传）：
 
 ```bash
 # 1. 启动本地 E4B llama-server（默认端口 18085）
@@ -61,8 +75,6 @@ UPSTREAM_API_KEY=your_key \
 TRANSLATOR_URL=http://127.0.0.1:18085 \
 node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
 ```
-
-![消费级显卡选型对照：12GB / 16GB / 24GB / Apple Silicon](assets/showcase/consumer-gpu-guide.png)
 
 ---
 
@@ -123,7 +135,7 @@ node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
 | [`packages/openai-voice-proxy/`](packages/openai-voice-proxy/) | 零依赖 Node 通用口语翻译代理（保护代码块与工具调用原样透传） | `npm --prefix packages/openai-voice-proxy test` |
 | [`web/`](web/) | 纸墨风二维性格球盘 Web UI、独立本地转发脚本与 Cloudflare/Vercel Edge 代理 | `npm --prefix web test` |
 | [`train/`](train/) | Split-Phase SFT、残差人格卡带、防偷渡 DPO、在线 DPO 清洗与 GGUF 导出 | `pytest train/test_train.py -v` |
-| [`hf-cards/`](hf-cards/) | HuggingFace 模型卡（`12b-v4`, `26b-a4b`, `translator-e4b`） | `python scripts/publish_hf_release.py --dry-run` |
+| [`hf-cards/`](hf-cards/) | HuggingFace 模型卡（主力 `12b-v4` 与 `translator-e4b`） | `python scripts/publish_hf_release.py --dry-run` |
 | [`scripts/`](scripts/) | 开源发布隐私门禁与 HuggingFace 5 槽权重校验脚本 | `python scripts/audit_zero_leak.py` |
 
 ## 开源许可

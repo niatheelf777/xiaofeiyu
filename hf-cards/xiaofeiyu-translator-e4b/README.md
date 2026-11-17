@@ -18,27 +18,26 @@ tags:
   - llama-cpp
   - gguf
   - companion
-  - 12gb-vram
+  - 8gb-vram
   - openai-proxy
   - xiaofeiyu
 ---
 
 # Xiaofeiyu Translator E4B (小肥鱼 E4B 302ms 通用声带翻译核 — Universal Voice Sidecar for DeepSeek / Claude / GPT)
 
-> **给任意前沿大模型（DeepSeek / Claude / GPT / Qwen）外挂「真人短气泡五滑条声带」，代码块与工具调用 `0%` 改动**：基于 `google/gemma-4-E4B-it`（仅占用 `~5.3 GiB` 显存，6GB+ 显卡或 Apple Silicon 即可常驻），配合 `@xiaofeiyu/openai-voice-proxy` 流式 AST 切分器，将上游大模型的说明散文在 **`302 ms` 中位延迟**内实时转译为小肥鱼五滑条短气泡口语，而把 Markdown 代码块、数学公式、URL/视频时间戳与 `tool_calls` 原封不动直通透传。
+> **6–8 GB 小显存显卡 / 云端大脑外挂首选**：给任意前沿大模型（DeepSeek / Claude / GPT / Qwen）外挂「真人短气泡五滑条声带」，代码块与工具调用 `0%` 改动。基于 `google/gemma-4-E4B-it`（仅占用 `~5.3 GiB` 显存，`RTX 3060 8GB` / `RTX 4060 8GB` / 轻薄本均可常驻），配合 `@xiaofeiyu/openai-voice-proxy` 流式 AST 切分器，将上游大模型的说明散文在 **`302 ms` 中位延迟**内实时转译为小肥鱼五滑条短气泡口语，而把 Markdown 代码块、数学公式、URL/视频时间戳与 `tool_calls` 原封不动直通透传。
 
-> **English Summary**: `niatheelf777/xiaofeiyu-translator-e4b` is a lightweight 4B (`google/gemma-4-E4B-it`, upper 20 non-QKV layers `L22..41`) 5-slider spoken-persona sidecar. Pair it with **any** OpenAI-compatible upstream model (DeepSeek, Claude, GPT, Qwen, local Llama) via `@xiaofeiyu/openai-voice-proxy`: prose turns into natural multi-bubble Mandarin IM chat in `~302 ms` median latency while fenced code blocks, identifiers, and tool calls pass through byte-for-byte untouched (`0 / 36` code-fence smuggling).
+> **English Summary**: `niatheelf777/xiaofeiyu-translator-e4b` is a lightweight 4B (`google/gemma-4-E4B-it`, upper 20 non-QKV layers `L22..41`) 5-slider spoken-persona sidecar built for `6–8 GB` GPUs or users who want to keep DeepSeek, Claude, GPT, or Qwen as their upstream brain via `@xiaofeiyu/openai-voice-proxy`. Prose turns into natural multi-bubble Mandarin IM chat in `~302 ms` median latency while fenced code blocks, identifiers, and tool calls pass through byte-for-byte untouched (`0 / 36` code-fence smuggling).
 
-## Xiaofeiyu (小肥鱼) Family Navigation / 家族矩阵导航
+## Xiaofeiyu (小肥鱼) Family Navigation / 家族导航
 
 | 组件 / 仓库 | 定位与显存门槛 | 链接 |
 | :--- | :--- | :--- |
-| **12B 主力全能版** | `RTX 3060 / 4070 12GB` 首选单模（`UD-Q4_K_XL` `~8.9 GiB` 显存，代码推理 `5/5`） | [`xiaofeiyu-12b-v4`（12B 主力全能版）](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) |
-| **26B-A4B 极速 MoE 版** | `4B` 激活参数高吞吐 MoE（16GB `UD-Q4_K_XL` / `IQ4_XS`；12GB `UD-IQ3_M`） | [`xiaofeiyu-26b-a4b`（26B-A4B 极速 MoE 版）](https://huggingface.co/niatheelf777/xiaofeiyu-26b-a4b) |
-| **E4B 通用声带翻译核** | `302 ms` 零思考口语翻译旁路（`~5.3 GiB`），外挂 DeepSeek / Claude / GPT 零改代码 | **`xiaofeiyu-translator-e4b`（当前仓 · E4B 302ms 通用声带翻译核）** |
+| **12B 主力打磨版（端到端首选）** | `≥ 16 GB` 显卡 / `24 GB+` Mac 首选 `Q8_0` 原版挂 LoRA（`~12.9 GiB`）；`12 GB` 显卡选特制 `UD-Q4_K_XL-xfy`（`~8.5–8.9 GiB`） | [`xiaofeiyu-12b-v4`（12B 主力打磨版）](https://huggingface.co/niatheelf777/xiaofeiyu-12b-v4) |
+| **E4B 通用声带翻译核** | `6–8 GB` 显卡适用（`~5.3 GiB`），外挂 DeepSeek / Claude / GPT 零改代码以 `302 ms` 改写短气泡 | **`xiaofeiyu-translator-e4b`（当前仓 · E4B 通用声带翻译核）** |
 | **在线二维性格球试玩** | 免下载直接拖拽性格球体验五滑条实时混音与代码/算账分相 | [https://xfy.tospeak.top](https://xfy.tospeak.top) |
 | **GitHub 一键本地启动仓** | 内置 `:8081` 纸墨风性格球网页 + OpenAI `/v1` 网关 + `DSH` 双模插件 | [github.com/niatheelf777/xiaofeiyu](https://github.com/niatheelf777/xiaofeiyu) |
-| **HuggingFace 官方合集** | 小肥鱼全系 GGUF 底座与五槽口语卡带总览 | [Xiaofeiyu Spoken Persona Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) |
+| **HuggingFace 官方合集** | 小肥鱼主力底座与五槽口语卡带总览 | [Xiaofeiyu Spoken Persona Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) |
 
 ## Verified Benchmarks (`Xiaofeiyu-Translator-E4B`)
 

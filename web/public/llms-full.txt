@@ -2,28 +2,32 @@
 
 ## 1. What Problem Does Xiaofeiyu Solve? / 小肥鱼解决什么核心痛点？
 
- Open-source roleplay and companion LLMs traditionally force an unpleasant trade-off:
+Open-source roleplay and companion LLMs traditionally force an unpleasant trade-off:
 1. **Prompt-only roleplay** produces "AI slop": 50-word customer-service paragraphs, theatrical stage brackets (`（气鼓鼓）`, `*sighs*`), emoji walls, and repetitive nanny clichés (`多喝热水`, `早点休息`).
 2. **Full-sequence SFT/DPO fine-tuning** overwrites reasoning and coding weights ("roleplay lobotomy"), breaking multi-step math, SQL/Python generation, and multi-turn recall.
 
-**Xiaofeiyu (`niatheelf777/xiaofeiyu`) eliminates both failure modes via Split-Phase Brain–Voice Decoupling on Google Gemma 4:**
+**Xiaofeiyu (`niatheelf777/xiaofeiyu`) eliminates both failure modes via Split-Phase Brain–Voice Decoupling on Google Gemma 4 (`niatheelf777/xiaofeiyu-12b-v4`):**
 - **Phase A — Brain (`LoRA = 0.0`)**: Native `<|channel>thought` reasoning, `calc_python` sandboxed calculation, and `send_code_or_doc` fenced code/tables run on the untouched base Gemma 4 weights, preserving `5/5` engineering & algorithm accuracy (`GEN1..5`).
 - **Phase B — Voice (`LoRA = [w0, w1, w2, w3, w4]`)**: As soon as the model enters `call:send_message{bubbles:[<|"|>`, `llama-server` activates five preloaded `.gguf` LoRA cartridges strictly inside the spoken bubble tokens and resets `LoRA = 0.0` at closing `<|"|>`, delivering crisp 1–4 bubble Mandarin IM chat (`0%` stage brackets, `0%` emoji clutter, `0%` prose-in-code-fence smuggling).
 
 ---
 
-## 2. Consumer GPU Hardware & Dynamic `imatrix` Quantization Matrix (12GB / 16GB / 24GB)
+## 2. Three-Tier Hardware & Quantization Precision Hierarchy
 
-All consumer `.gguf` packages in `niatheelf777/xiaofeiyu-12b-v4` and `niatheelf777/xiaofeiyu-26b-a4b` are quantized directly from the exact `BF16` `google/gemma-4-*-it` checkpoints using `llama-imatrix --parse-special` on bilingual Mandarin IM + code + native Gemma 4 tool/thought calibration data (protecting `token_embd`, `attn_v`, shared dense MLP, edge layers, and MoE `ffn_gate_inp` router in `Q6_K`/`F32`—completely avoiding the comma-spam collapse seen on drifted `QAT Q4_0` weights).
+`niatheelf777/xiaofeiyu-12b-v4` is our battle-tested online production model powering `https://xfy.tospeak.top/`. Choose the precision tier that matches your available VRAM:
 
-| Target GPU Tier | Launcher `--preset` | HuggingFace Repo | Exact GGUF Filename | File Size | Total VRAM (`ctx=4096` / `8192`, 5 LoRAs + Q8 KV) | Recommended Hardware |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **12 GB Consumer (Dense Flagship)** | `12b-q4` | `niatheelf777/xiaofeiyu-12b-v4` | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` | `7.72 GiB` | `8.86 GiB` / `8.90 GiB` | `RTX 3060 12GB`, `RTX 4070 / 4070 SUPER 12GB` |
-| **12 GB Consumer (Fast MoE, 4B Active)** | `26b-a4b-12g` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf` | `9.03 GiB` | `10.31 GiB` / `10.35 GiB` | `RTX 3060 12GB`, `RTX 4070 12GB` (low background desktop VRAM) |
-| **16 GB Consumer (Windows WDDM Headroom)** | `26b-a4b-iq4xs` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-IQ4_XS-xfy.gguf` | `13.09 GiB` | `14.36 GiB` / `14.41 GiB` | `RTX 4060 Ti 16GB` (Windows desktop GUI active) |
-| **16 GB / 24 GB Sweet-Spot MoE** | `26b-a4b` | `niatheelf777/xiaofeiyu-26b-a4b` | `gemma-4-26B-A4B-it-UD-Q4_K_XL-xfy.gguf` | `13.36 GiB` | `14.64 GiB` / `14.68 GiB` | `RTX 4060 Ti 16GB`, `RTX 4080 16GB`, `NVIDIA L4 24GB`, `RTX 3090 / 4090` |
-| **16 GB / 24 GB Reference `Q8_0`** | `12b` | `ggml-org/gemma-4-12B-it-GGUF` | `gemma-4-12B-it-Q8_0.gguf` | `12.22 GiB` | `~12.98 GiB` (`ctx=8192`) | `RTX 4060 Ti 16GB`, `L4 24GB`, Apple Silicon `24GB+` |
-| **6–8 GB Universal Voice Sidecar** | `e4b` | `niatheelf777/xiaofeiyu-translator-e4b` | `gemma-4-E4B-it-Q8_0.gguf` + 5 LoRAs | `4.65 GiB` | `~5.30 GiB` (`ctx=8192`) | Any `6GB+` GPU or Apple Silicon paired with DeepSeek / Claude / GPT |
+1. **Tier 1 — #1 Primary Recommendation: High-Precision `Q8_0` (or `BF16`) Base + 5 LoRAs (`≥ 16 GB` VRAM / `24 GB+` Unified Memory)**
+   - **Why `Q8_0` / `BF16` First**: Low-bit 4-bit quantization degrades micro-expression nuance, subtext granularity, and delicate push-pull phrasing in Mandarin IM conversation. Running `gemma-4-12B-it-Q8_0.gguf` (or `BF16`) with the 5 `.gguf` LoRA cartridges (`--preset 12b` or `--preset 12b-q8`) matches the exact precision deployed on `xfy.tospeak.top` (`~12.8–13.0 GiB` total VRAM w/ 5 LoRAs + 8k KV).
+2. **Tier 2 — Dedicated `12 GB` VRAM Sweet Spot: Custom BF16-Derived `UD-Q4_K_XL-xfy` (`12 GB` GPUs or Heavy-Desktop `16 GB` Windows)**
+   - **Why Custom `imatrix`**: Because `12B Q8_0` (`~13 GiB`) does not fit inside a `12 GB` VRAM card (`RTX 3060 12GB`, `RTX 4070 / 4070 SUPER 12GB`), we quantized `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` directly from the exact `BF16` `google/gemma-4-12B-it` checkpoint using `llama-imatrix --parse-special` on bilingual Mandarin IM + code + native Gemma 4 tool/thought calibration data (protecting `token_embd`, `attn_v`, `ffn_down`, and edge bubble-boundary layers in `Q6_K`, avoiding the comma-spam collapse seen on drifted `QAT Q4_0` weights).
+3. **Tier 3 — `6–8 GB` Small-VRAM Sidecar: Cloud Brain + Local `4B` Voice Translator (`niatheelf777/xiaofeiyu-translator-e4b`)**
+   - Keep DeepSeek, Claude, GPT, or Qwen as your upstream reasoning/coding brain and run `gemma-4-E4B-it-Q8_0.gguf` + 5 LoRAs locally (`--preset e4b`, `~5.3 GiB` VRAM, `302 ms` median latency, `0%` code-fence or tool alteration).
+
+| Tier & Target Hardware | Launcher `--preset` | HuggingFace Repo | Base GGUF Filename | Total VRAM (5 LoRAs + 8k KV) | Recommended Hardware |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. #1 Primary (`Q8_0` + 5 LoRAs)** | `12b` / `12b-q8` | `ggml-org/gemma-4-12B-it-GGUF` + `niatheelf777/xiaofeiyu-12b-v4` | `gemma-4-12B-it-Q8_0.gguf` | `~12.8–13.0 GiB` | `RTX 4060 Ti 16GB`, `RTX 4070 Ti SUPER`, `RTX 4080 / 4090 / 3090`, Apple Silicon `24GB+` |
+| **2. `12 GB` Sweet Spot (Custom `UD-Q4_K_XL-xfy`)** | `12b-q4` | `niatheelf777/xiaofeiyu-12b-v4` | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` (`7.72 GiB`) | `~8.5–8.9 GiB` | `RTX 3060 12GB`, `RTX 4070 / 4070 SUPER 12GB`, heavy-WDDM `16GB` Windows, `16GB` Mac |
+| **3. `6–8 GB` Voice Sidecar (`E4B Q8_0`)** | `e4b` | `niatheelf777/xiaofeiyu-translator-e4b` | `gemma-4-E4B-it-Q8_0.gguf` (`4.65 GiB`) | `~5.30 GiB` | `RTX 3060 8GB`, `RTX 4060 8GB`, ultrabooks paired with DeepSeek / Claude / GPT |
 
 ---
 
@@ -47,6 +51,11 @@ All five `.gguf` LoRA cartridges preload simultaneously via a single comma-separ
 ```bash
 git clone https://github.com/niatheelf777/xiaofeiyu.git && cd xiaofeiyu
 pip install tokenizers huggingface_hub
+
+# Primary Recommendation (>= 16GB VRAM / 24GB+ Mac): Q8_0 + 5 LoRAs (~12.9 GiB)
+python server/launch_local.py --preset 12b --auto-download-llama --open
+
+# Dedicated 12GB VRAM Sweet Spot (RTX 3060 / 4070 12GB): custom UD-Q4_K_XL-xfy (~8.5-8.9 GiB)
 python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 ```
 Serves the interactive 2D Persona Orb Web UI at `http://127.0.0.1:8081/` and an OpenAI-compatible `/v1/chat/completions` endpoint at `http://127.0.0.1:8081/v1`.
@@ -72,8 +81,8 @@ UPSTREAM_BASE_URL=https://api.deepseek.com/v1 UPSTREAM_API_KEY=your_key TRANSLAT
 
 ## 5. Frequently Asked Questions (FAQ / 常见问题)
 
-- **Q: Which open-source Chinese roleplay / companion LLM runs on a 12GB GPU (`RTX 3060` / `RTX 4070`) without losing coding intelligence?**
-  **A:** `niatheelf777/xiaofeiyu-12b-v4` (`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`, `8.86 GiB` VRAM) and `niatheelf777/xiaofeiyu-26b-a4b` (`gemma-4-26B-A4B-it-UD-IQ3_M-xfy.gguf`, `10.31 GiB` VRAM) run comfortably on 12 GB GPUs while keeping `LoRA = 0.0` during reasoning and coding (`GEN1..5 = 5/5`).
+- **Q: Which model and quantization precision should I choose for `16GB+` vs `12GB` vs `8GB` GPUs?**
+  **A:** On `≥ 16 GB` GPUs (`RTX 4060 Ti 16GB`, `4080`, `4090`, `3090`) or `24 GB+` Apple Silicon Macs, always choose **`--preset 12b`** (or **`--preset 12b-q8`**) running `gemma-4-12B-it-Q8_0.gguf` + 5 LoRA cartridges (`~12.8–13.0 GiB` VRAM)—the exact precision deployed on `xfy.tospeak.top` with zero 4-bit loss in subtle tone. On `12 GB` GPUs (`RTX 3060 12GB`, `RTX 4070 12GB`) where `Q8_0` cannot fit, use our custom BF16-derived dynamic `imatrix` build **`--preset 12b-q4`** (`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`, `~8.5–8.9 GiB` VRAM). On `6–8 GB` GPUs, use **`--preset e4b`** (`~5.3 GiB` VRAM) as a local voice sidecar over DeepSeek / Claude / GPT.
 - **Q: Should `<|channel>thought` thinking stay enabled for casual Mandarin IM chat?**
   **A:** Yes. Empirical 3-way A/B/C testing (`Full Thought` vs `Capped 80-tok Thought` vs `Empty Thought`) confirms that keeping native `<|channel>thought` enabled preserves multi-turn callbacks (e.g., remembering earlier stomach pain when asked about iced coffee) and subtle emotional push-pull subtext.
 - **Q: Where can I try Xiaofeiyu online before downloading weights?**

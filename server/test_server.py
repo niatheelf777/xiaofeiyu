@@ -382,7 +382,7 @@ class TestSplitPhaseServer(unittest.TestCase):
         self.assertTrue(prompt_text.endswith("<|channel>thought\n"))
 
     def test_launch_local_dry_run_presets(self) -> None:
-        for preset in ("26b-a4b", "26b-a4b-iq4xs", "26b-a4b-12g", "26b-a4b-q8", "12b", "12b-q4", "e4b"):
+        for preset in ("26b-a4b", "26b-a4b-iq4xs", "26b-a4b-12g", "26b-a4b-q8", "12b", "12b-q8", "12b-q4", "e4b"):
             plan = launch_local.build_launch_plan(
                 preset_name=preset,
                 models_dir=Path("./models"),
@@ -399,6 +399,38 @@ class TestSplitPhaseServer(unittest.TestCase):
             self.assertTrue(plan["adapters_hf_repo"].startswith("niatheelf777/"))
             self.assertEqual(plan["web_ui_url"], "http://127.0.0.1:8081/")
             self.assertEqual(plan["openai_api_url"], "http://127.0.0.1:8081/v1")
+
+        plan_12b = launch_local.build_launch_plan(
+            preset_name="12b",
+            models_dir=Path("./models"),
+            loras_dir=Path("./loras"),
+            llama_bin="llama-server",
+            host="127.0.0.1",
+            port=8081,
+            llama_port=8082,
+            n_parallel=1,
+            ctx_size=None,
+            n_gpu_layers=99,
+        )
+        plan_12b_q8 = launch_local.build_launch_plan(
+            preset_name="12b-q8",
+            models_dir=Path("./models"),
+            loras_dir=Path("./loras"),
+            llama_bin="llama-server",
+            host="127.0.0.1",
+            port=8081,
+            llama_port=8082,
+            n_parallel=1,
+            ctx_size=None,
+            n_gpu_layers=99,
+        )
+        self.assertEqual(plan_12b_q8["base_gguf_file"], "gemma-4-12B-it-Q8_0.gguf")
+        self.assertEqual(plan_12b_q8["base_hf_repo"], "ggml-org/gemma-4-12B-it-GGUF")
+        self.assertEqual(plan_12b_q8["adapters_hf_repo"], "niatheelf777/xiaofeiyu-12b-v4")
+        self.assertEqual(plan_12b_q8["tokenizer_path"], plan_12b["tokenizer_path"])
+        self.assertEqual(plan_12b_q8["lora_files"], plan_12b["lora_files"])
+        self.assertEqual(plan_12b_q8["llama_cmd"], plan_12b["llama_cmd"])
+        self.assertEqual(plan_12b_q8["gateway_cmd"], plan_12b["gateway_cmd"])
 
         q4_plan = launch_local.build_launch_plan(
             preset_name="12b-q4",

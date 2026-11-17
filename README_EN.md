@@ -1,10 +1,13 @@
 # Xiaofeiyu · Split-Phase 5-Slider Persona Mixing & Universal Voice Proxy
 
-[中文 README](README.md) · [Live Demo](https://xfy.tospeak.top) · [Hugging Face Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages Overview](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb)
+
+[中文 README](README.md) · [Live Demo](https://xfy.tospeak.top) · [Free Colab T4 Notebook](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb) · [Hugging Face Collection](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages Overview](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
 
 Xiaofeiyu is a low-invasion spoken IM voice engine for Gemma 4: reasoning, code generation, and tool calls execute at **zero LoRA (`LoRA = 0.0`)**, while lightweight 5-slider persona adapters activate exclusively inside `<|"|>` speech-bubble delimiters—delivering authentic multi-bubble human chat without sacrificing intelligence.
 
-Live Demo: [https://xfy.tospeak.top](https://xfy.tospeak.top)
+- **Zero-GPU Cloud Play (Free Colab T4 15 GB)**: Click the `Open In Colab` badge above or open [`notebooks/xiaofeiyu_colab_free_t4.ipynb`](notebooks/xiaofeiyu_colab_free_t4.ipynb) to launch the interactive 2D Persona Orb Web UI directly inside a Colab cell (`12b-q4` uses `~8.9 GiB` VRAM); [`spaces/hf-zerogpu/`](spaces/hf-zerogpu/) provides an in-process PyTorch `BF16` ZeroGPU Space bundle as well.
+- **Live Demo**: [https://xfy.tospeak.top](https://xfy.tospeak.top)
 
 ---
 
@@ -90,13 +93,13 @@ Prompt-engineered role-play models fall back on verbose paragraphs, theatrical s
 
 Built atop a shared IM voice backbone (`s0`) plus four modular personality cartridges (`c1..c4`), weights can be mixed smoothly per request via OpenAI `model="xiaofeiyu-v4|w0,w1,w2,w3,w4"` with zero model reloads:
 
-| Slot | Branch ID | Role | Mixing Budget |
-| :---: | :--- | :--- | :--- |
-| `0` | `s0_xiaofeiyu_backbone` | Core natural spoken IM backbone | `w0 = 1.0` |
-| `1` | `c1_neko_clingy` | Affectionate, clingy warmth | `w1 + w2 + w3 + w4 <= 1.15` |
-| `2` | `c2_older_tease` | Calm, teasing older-sister banter | same |
-| `3` | `c3_brat_mesugaki` | Sharp-tongued playful tsundere | same |
-| `4` | `c4_fragile_porcelain` | Soft-spoken fragile warmth | same |
+| Slot | Branch ID | Label | Role | Mixing Budget |
+| :---: | :--- | :--- | :--- | :--- |
+| `0` | `s0_xiaofeiyu_backbone` | Everyday Warmth (`元气日常`) | Relaxed everyday companion rhythm | `w0 = 1.0` |
+| `1` | `c1_neko_clingy` | Sweet & Clingy (`甜系软萌`) | Affectionate, soft-spoken warmth | `w1 + w2 + w3 + w4 <= 1.15` |
+| `2` | `c2_older_tease` | Poised Older Sister (`知性姐姐`) | Calm, warm, composed older-sister banter | same |
+| `3` | `c3_brat_mesugaki` | Tsundere Wit (`傲娇毒舌`) | Playful sharp-tongued banter with underlying care | same |
+| `4` | `c4_fragile_porcelain` | Quiet & Gentle (`安静慢热`) | Soft, unhurried late-night companionship | same |
 
 ![Five distinct personas from one prompt via 5-slider linear mixing](assets/showcase/five-persona-grid.png)
 
@@ -133,6 +136,8 @@ User Turn ─▶ Phase A: Thinking & Tool/Code (LoRA = 0.0)
 - [`packages/openai-voice-proxy/`](packages/openai-voice-proxy/) — Zero-dep Node OpenAI voice translator proxy (`npm --prefix packages/openai-voice-proxy test`)
 - [`web/`](web/) — Paper-ink 2D Persona Orb Web UI, standalone local launcher, and Cloudflare/Vercel Edge proxy (`npm --prefix web test`)
 - [`train/`](train/) — Split-phase SFT, residual cartridges, anti-smuggle DPO, Online DPO miner, 5-slot GGUF exporter (`pytest train/test_train.py -v`)
+- [`notebooks/`](notebooks/) — One-click Google Colab Free T4 (`15 GB`) notebook embedding the 2D Persona Orb Web UI directly in-cell (`notebooks/xiaofeiyu_colab_free_t4.ipynb`)
+- [`spaces/hf-zerogpu/`](spaces/hf-zerogpu/) — HuggingFace ZeroGPU PyTorch `BF16` 5-slider Gradio Space bundle (`spaces/hf-zerogpu/app.py`)
 - [`hf-cards/`](hf-cards/) — HuggingFace model cards (`12b-v4` flagship and `translator-e4b` sidecar)
 - [`scripts/`](scripts/) — Clean-room leak auditor (`audit_zero_leak.py`) and HuggingFace release verifier (`publish_hf_release.py`)
 

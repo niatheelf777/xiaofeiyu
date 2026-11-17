@@ -1,10 +1,13 @@
 # 小肥鱼 (Xiaofeiyu) · Split-Phase 五滑条口语外挂与气泡对话引擎
 
-[English README](README_EN.md) · [在线试玩 (Live Demo)](https://xfy.tospeak.top) · [Hugging Face 模型合集](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages 索引页](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb)
+
+[English README](README_EN.md) · [在线试玩 (Live Demo)](https://xfy.tospeak.top) · [Colab 免费 T4 一键试玩](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb) · [Hugging Face 模型合集](https://huggingface.co/collections/niatheelf777/xiaofeiyu-split-phase-spoken-persona-family-6afb60d6cecd8097f5fb3a13) · [Pages 索引页](https://niatheelf777.github.io/xiaofeiyu/) · [llms.txt](llms.txt)
 
 小肥鱼是一套面向 Gemma 4 的**低侵入式口语声带与五滑条人格混音方案**：推理思考、代码生成与工具调用全程以零 LoRA（`LoRA = 0.0`）原生运行，仅在输出微信/IM 对话气泡的 `<|"|>` 区间实时注入轻量化人格声带权重，兼具真人短气泡节奏与 100% 满血智商。
 
-在线试玩站：[https://xfy.tospeak.top](https://xfy.tospeak.top)
+- **免自备显卡 · Google Colab 免费 T4 (`15 GB`) 直接开聊**：点击上方 `Open In Colab` 徽章或运行 [`notebooks/xiaofeiyu_colab_free_t4.ipynb`](notebooks/xiaofeiyu_colab_free_t4.ipynb)，在 Colab 单元格内嵌网页直接拖动二维性格球盘聊天（`12b-q4` 仅占约 `~8.9 GiB` 显存，稳跑于免费 T4）；另提供 [`spaces/hf-zerogpu/`](spaces/hf-zerogpu/) PyTorch `BF16` ZeroGPU 部署包。
+- **在线试玩站**：[https://xfy.tospeak.top](https://xfy.tospeak.top)
 
 ---
 
@@ -92,11 +95,11 @@ node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
 
 | 槽位 | 分支 ID | 中文标签 | 角色定位 | 预算约束 |
 | :---: | :--- | :--- | :--- | :--- |
-| `0` | `s0_xiaofeiyu_backbone` | 小肥鱼日常 | 核心真人短气泡口语底座 | `w0 = 1.0` |
-| `1` | `c1_neko_clingy` | 粘人猫娘 | 高依恋、软撒娇、拉袖口 | `w1 + w2 + w3 + w4 <= 1.15` |
-| `2` | `c2_older_tease` | 年上御姐 | 游刃有余的轻熟逗弄与反客为主 | 同上 |
-| `3` | `c3_brat_mesugaki` | 恶劣雌小鬼 | 嘴硬傲娇、嘴上不饶人 | 同上 |
-| `4` | `c4_fragile_porcelain` | 易碎依赖 | 轻声细语、低体温脆感陪伴 | 同上 |
+| `0` | `s0_xiaofeiyu_backbone` | 元气日常 | 自然松弛的日常朋友搭子，短句接话不端架子 | `w0 = 1.0` |
+| `1` | `c1_neko_clingy` | 甜系软萌 | 软糯粘人、直球撒娇的高温度陪伴 | `w1 + w2 + w3 + w4 <= 1.15` |
+| `2` | `c2_older_tease` | 知性姐姐 | 从容温柔、游刃有余的姐姐感与包纳感 | 同上 |
+| `3` | `c3_brat_mesugaki` | 傲娇毒舌 | 嘴硬心软、欢喜冤家式的机锋吐槽 | 同上 |
+| `4` | `c4_fragile_porcelain` | 安静慢热 | 轻声细语、细腻克制的慢热倾听 | 同上 |
 
 ![五滑条实时无重启混音：同一句话五种鲜明性格](assets/showcase/five-persona-grid.png)
 
@@ -135,6 +138,8 @@ node packages/openai-voice-proxy/bin/xiaofeiyu-voice-proxy.mjs
 | [`packages/openai-voice-proxy/`](packages/openai-voice-proxy/) | 零依赖 Node 通用口语翻译代理（保护代码块与工具调用原样透传） | `npm --prefix packages/openai-voice-proxy test` |
 | [`web/`](web/) | 纸墨风二维性格球盘 Web UI、独立本地转发脚本与 Cloudflare/Vercel Edge 代理 | `npm --prefix web test` |
 | [`train/`](train/) | Split-Phase SFT、残差人格卡带、防偷渡 DPO、在线 DPO 清洗与 GGUF 导出 | `pytest train/test_train.py -v` |
+| [`notebooks/`](notebooks/) | Google Colab 免费 T4 (`15 GB`) 一键内嵌二维性格球试玩 Notebook | `notebooks/xiaofeiyu_colab_free_t4.ipynb` |
+| [`spaces/hf-zerogpu/`](spaces/hf-zerogpu/) | HuggingFace ZeroGPU (`BF16`) 进程内 Five-Slider LoRA Gradio 部署包 | `spaces/hf-zerogpu/app.py` |
 | [`hf-cards/`](hf-cards/) | HuggingFace 模型卡（主力 `12b-v4` 与 `translator-e4b`） | `python scripts/publish_hf_release.py --dry-run` |
 | [`scripts/`](scripts/) | 开源发布隐私门禁与 HuggingFace 5 槽权重校验脚本 | `python scripts/audit_zero_leak.py` |
 

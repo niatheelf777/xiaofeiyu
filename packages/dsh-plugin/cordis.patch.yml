@@ -39,27 +39,27 @@
             input:
               - text
           - id: xiaofeiyu-v4:pure
-            name: 小肥鱼 Unified · 纯原版 (s0)
+            name: 小肥鱼 Unified · 元气日常 (s0)
             contextWindow: 32768
             input:
               - text
           - id: xiaofeiyu-v4:neko
-            name: 小肥鱼 Unified · 粘人猫娘 (c1)
+            name: 小肥鱼 Unified · 甜系软萌 (c1)
             contextWindow: 32768
             input:
               - text
           - id: xiaofeiyu-v4:tease
-            name: 小肥鱼 Unified · 年上御姐 (c2)
+            name: 小肥鱼 Unified · 知性姐姐 (c2)
             contextWindow: 32768
             input:
               - text
           - id: xiaofeiyu-v4:brat
-            name: 小肥鱼 Unified · 嘴硬雌小鬼 (c3)
+            name: 小肥鱼 Unified · 傲娇毒舌 (c3)
             contextWindow: 32768
             input:
               - text
           - id: xiaofeiyu-v4:fragile
-            name: 小肥鱼 Unified · 低体温易碎 (c4)
+            name: 小肥鱼 Unified · 安静慢热 (c4)
             contextWindow: 32768
             input:
               - text
@@ -69,7 +69,7 @@
             input:
               - text
           - id: xiaofeiyu-translator-e4b-v1:neko
-            name: 小肥鱼 E4B · 粘人猫娘
+            name: 小肥鱼 E4B · 甜系软萌
             contextWindow: 16384
             input:
               - text

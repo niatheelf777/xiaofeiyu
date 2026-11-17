@@ -22,9 +22,6 @@ export const config = { runtime: 'edge' };
 
 export const DEFAULT_NON_LAST_TIMEOUT_MS = 20_000;
 export const DEFAULT_LAST_TIMEOUT_MS = 180_000;
-export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 45_000;
-export const DEFAULT_STREAM_MAX_DURATION_MS = 120_000;
-const WATCHDOG_TIMEOUT_SENTINEL = Symbol('WATCHDOG_TIMEOUT');
 
 async function readBoundedBody(request) {
   const clHeader = request.headers.get('content-length');
@@ -393,31 +390,9 @@ export async function handleChatRequest(request, context = {}, deps = {}) {
             const reader = upstreamRes.body.getReader();
             const decoder = new TextDecoder();
             let sseBuffer = '';
-            const idleLimitMs = deps.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
-            const maxDurationMs = deps.streamMaxDurationMs ?? DEFAULT_STREAM_MAX_DURATION_MS;
-            const streamDeadline = Date.now() + maxDurationMs;
-            let watchdogTriggered = false;
 
             while (!streamCancelled) {
-              const remainingTotalMs = streamDeadline - Date.now();
-              if (remainingTotalMs <= 0) {
-                watchdogTriggered = true;
-                break;
-              }
-              const waitMs = Math.min(idleLimitMs, remainingTotalMs);
-              let readTimer = null;
-              const readOutcome = await Promise.race([
-                reader.read(),
-                new Promise((resolve) => {
-                  readTimer = setTimeout(() => resolve(WATCHDOG_TIMEOUT_SENTINEL), waitMs);
-                }),
-              ]);
-              if (readTimer) clearTimeout(readTimer);
-              if (readOutcome === WATCHDOG_TIMEOUT_SENTINEL) {
-                watchdogTriggered = true;
-                break;
-              }
-              const { value, done } = readOutcome;
+              const { value, done } = await reader.read();
               if (done) break;
               if (firstByteMs === null) {
                 firstByteMs = Math.max(0, Date.now() - attemptStartedAt);
@@ -464,27 +439,6 @@ export async function handleChatRequest(request, context = {}, deps = {}) {
                     enqueueEvent('bubble', b);
                   }
                 }
-              }
-            }
-
-            if (watchdogTriggered) {
-              try {
-                activeAttempt?.attemptController?.abort(new Error('STREAM_WATCHDOG_TIMEOUT'));
-              } catch {
-                // ignore abort errors
-              }
-              try {
-                await reader.cancel();
-              } catch {
-                // ignore reader cancel errors
-              }
-              if (!accumulated.trim()) {
-                enqueueEvent('error', {
-                  code: 'STREAM_TIMEOUT',
-                  message: '小肥鱼思考超时啦，请再点一次发送试试。',
-                });
-                releaseOnce({ ok: false, tripCooldown: false });
-                return;
               }
             }
           } else {

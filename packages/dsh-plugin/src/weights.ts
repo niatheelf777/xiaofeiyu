@@ -25,11 +25,11 @@ export interface SliderInputConfig {
 export const SLIDER_PRESETS: Readonly<
   Record<Exclude<SliderPresetId, 'custom'>, { readonly label: string; readonly values: SliderTuple }>
 > = {
-  pure: { label: '纯原版', values: [1.0, 0.0, 0.0, 0.0, 0.0] },
-  neko_sweet: { label: '微甜猫系', values: [1.0, 0.65, 0.0, 0.0, 0.0] },
-  tease_neko: { label: '御姐逗猫', values: [0.95, 0.4, 0.7, 0.0, 0.0] },
-  brat_spice: { label: '嘴硬雌小鬼', values: [1.0, 0.0, 0.0, 0.85, 0.0] },
-  fragile_tipsy: { label: '易碎微醺', values: [0.95, 0.0, 0.0, 0.0, 0.6] },
+  pure: { label: '元气日常', values: [1.0, 0.0, 0.0, 0.0, 0.0] },
+  neko_sweet: { label: '微甜软萌', values: [1.0, 0.65, 0.0, 0.0, 0.0] },
+  tease_neko: { label: '知性甜混', values: [0.95, 0.4, 0.7, 0.0, 0.0] },
+  brat_spice: { label: '傲娇毒舌', values: [1.0, 0.0, 0.0, 0.85, 0.0] },
+  fragile_tipsy: { label: '安静轻柔', values: [0.95, 0.0, 0.0, 0.0, 0.6] },
 };
 
 export const MODEL_FLAVOR_OVERRIDES: Readonly<Record<string, SliderTuple>> = {
@@ -52,17 +52,17 @@ export const MODEL_FLAVOR_OVERRIDES: Readonly<Record<string, SliderTuple>> = {
 
 export const ADVERTISED_MODELS = [
   { id: 'xiaofeiyu-v4', name: '小肥鱼 Unified · 实时五滑条混音', description: '5-slider unified PC2 model' },
-  { id: 'xiaofeiyu-v4:pure', name: '小肥鱼 Unified · 纯原版', description: '(1.0, 0, 0, 0, 0)' },
-  { id: 'xiaofeiyu-v4:neko', name: '小肥鱼 Unified · 粘人猫娘', description: '(1.0, 0.85, 0, 0, 0)' },
-  { id: 'xiaofeiyu-v4:tease', name: '小肥鱼 Unified · 年上御姐', description: '(1.0, 0, 0.85, 0, 0)' },
-  { id: 'xiaofeiyu-v4:brat', name: '小肥鱼 Unified · 嘴硬雌小鬼', description: '(1.0, 0, 0, 0.85, 0)' },
-  { id: 'xiaofeiyu-v4:fragile', name: '小肥鱼 Unified · 低体温易碎', description: '(1.0, 0, 0, 0, 0.85)' },
+  { id: 'xiaofeiyu-v4:pure', name: '小肥鱼 Unified · 元气日常', description: '(1.0, 0, 0, 0, 0)' },
+  { id: 'xiaofeiyu-v4:neko', name: '小肥鱼 Unified · 甜系软萌', description: '(1.0, 0.85, 0, 0, 0)' },
+  { id: 'xiaofeiyu-v4:tease', name: '小肥鱼 Unified · 知性姐姐', description: '(1.0, 0, 0.85, 0, 0)' },
+  { id: 'xiaofeiyu-v4:brat', name: '小肥鱼 Unified · 傲娇毒舌', description: '(1.0, 0, 0, 0.85, 0)' },
+  { id: 'xiaofeiyu-v4:fragile', name: '小肥鱼 Unified · 安静慢热', description: '(1.0, 0, 0, 0, 0.85)' },
   {
     id: 'xiaofeiyu-translator-e4b-v1',
     name: '小肥鱼 E4B Voice Proxy · 实时五滑条混音',
     description: 'Zero-thought <0.8s 5-slider translator sidecar',
   },
-  { id: 'xiaofeiyu-translator-e4b-v1:neko', name: '小肥鱼 E4B · 粘人猫娘', description: '(1.0, 0.85, 0, 0, 0)' },
+  { id: 'xiaofeiyu-translator-e4b-v1:neko', name: '小肥鱼 E4B · 甜系软萌', description: '(1.0, 0.85, 0, 0, 0)' },
 ] as const;
 
 export function round3(value: number): number {

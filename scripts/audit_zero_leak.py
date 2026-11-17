@@ -89,6 +89,7 @@ ALLOWED_PUBLIC_DOMAINS = frozenset(
         "w3.org",
         "www.w3.org",
         "matplotlib.org",
+        "colab.research.google.com",
     }
 )
 

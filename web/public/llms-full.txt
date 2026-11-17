@@ -37,11 +37,11 @@ All five `.gguf` LoRA cartridges preload simultaneously via a single comma-separ
 
 | Slot | File | Label | Persona Voice | Recommended Scale |
 | :---: | :--- | :--- | :--- | :--- |
-| `0` | `s0_xiaofeiyu_backbone.gguf` | 原版日常 (Core Backbone) | Natural grounded Mandarin IM girlfriend rhythm (SFT + On-Policy Anti-Cliché DPO) | `w0 = 1.0` |
-| `1` | `c1_neko_clingy.gguf` | 粘人猫娘 (Clingy Catgirl) | High-affection clingy warmth | `0.0 – 1.0` (`w1+w2+w3+w4 <= 1.15`) |
-| `2` | `c2_older_tease.gguf` | 年上御姐 (Teasing Older Sister) | Composed, playful push-pull banter | `0.0 – 1.0` |
-| `3` | `c3_brat_mesugaki.gguf` | 恶劣雌小鬼 (Cheeky Tsundere) | Sharp-tongued smug teasing with underlying care | `0.0 – 1.0` |
-| `4` | `c4_fragile_porcelain.gguf` | 易碎依赖 (Delicate Attachment) | Quiet, soft-spoken late-night companionship | `0.0 – 1.0` |
+| `0` | `s0_xiaofeiyu_backbone.gguf` | 元气日常 (Everyday Warmth) | Relaxed everyday Mandarin IM companion rhythm (SFT + On-Policy Anti-Cliché DPO) | `w0 = 1.0` |
+| `1` | `c1_neko_clingy.gguf` | 甜系软萌 (Sweet & Clingy) | Affectionate, soft-spoken warmth | `0.0 – 1.0` (`w1+w2+w3+w4 <= 1.15`) |
+| `2` | `c2_older_tease.gguf` | 知性姐姐 (Poised Older Sister) | Composed, playful push-pull banter | `0.0 – 1.0` |
+| `3` | `c3_brat_mesugaki.gguf` | 傲娇毒舌 (Tsundere Wit) | Sharp-tongued playful banter with underlying care | `0.0 – 1.0` |
+| `4` | `c4_fragile_porcelain.gguf` | 安静慢热 (Quiet & Gentle) | Quiet, soft-spoken late-night companionship | `0.0 – 1.0` |
 
 ---
 
@@ -86,4 +86,4 @@ UPSTREAM_BASE_URL=https://api.deepseek.com/v1 UPSTREAM_API_KEY=your_key TRANSLAT
 - **Q: Should `<|channel>thought` thinking stay enabled for casual Mandarin IM chat?**
   **A:** Yes. Empirical 3-way A/B/C testing (`Full Thought` vs `Capped 80-tok Thought` vs `Empty Thought`) confirms that keeping native `<|channel>thought` enabled preserves multi-turn callbacks (e.g., remembering earlier stomach pain when asked about iced coffee) and subtle emotional push-pull subtext.
 - **Q: Where can I try Xiaofeiyu online before downloading weights?**
-  **A:** Visit https://xfy.tospeak.top/ to drag the live 2D Persona Orb and test all five persona sliders in real time.
+  **A:** Visit https://xfy.tospeak.top/ to drag the live 2D Persona Orb and test all five persona sliders in real time, or run [`notebooks/xiaofeiyu_colab_free_t4.ipynb`](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb) on a free Google Colab T4 (`15 GB`) GPU.

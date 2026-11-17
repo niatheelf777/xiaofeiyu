@@ -25,7 +25,9 @@ tags:
 
 # Xiaofeiyu 12B v4 (小肥鱼 12B 主力打磨版 — `Q8_0` High-Precision Primary + `12 GB` Custom Dynamic GGUF)
 
-> **公网试玩站 [`xfy.tospeak.top`](https://xfy.tospeak.top) 同款主力打磨版（`google/gemma-4-12B-it`）**：采用 **Split-Phase 脑声分相架构**——模型在 `<|channel>thought` 思考、`calc_python` 算账与 `send_code_or_doc` 写代码时全程保持 **`LoRA = 0.0` 原厂满血智商（`GEN1..5 = 5/5`）**；仅在 `<|"|>` 口语短气泡区间动态挂载 5 枚轻量 `.gguf` 声带卡带（`s0` 原版日常 + `c1` 粘人猫娘 + `c2` 年上御姐 + `c3` 恶劣雌小鬼 + `c4` 易碎依赖）。
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb)
+
+> **公网试玩站 [`xfy.tospeak.top`](https://xfy.tospeak.top) 同款主力打磨版（`google/gemma-4-12B-it`）**：采用 **Split-Phase 脑声分相架构**——模型在 `<|channel>thought` 思考、`calc_python` 算账与 `send_code_or_doc` 写代码时全程保持 **`LoRA = 0.0` 原厂满血智商（`GEN1..5 = 5/5`）**；仅在 `<|"|>` 口语短气泡区间动态挂载 5 枚轻量 `.gguf` 声带卡带（`s0` 元气日常 + `c1` 甜系软萌 + `c2` 知性姐姐 + `c3` 傲娇毒舌 + `c4` 安静慢热）。免自备显卡亦可点击上方 `Open In Colab` 徽章在免费 `T4 (15 GB)` 单元格内嵌网页直接拖球开聊。
 >
 > **精度推荐原则**：`≥ 16 GB` 显存显卡与 `24 GB+` Mac **强烈优先选用未经过低比特压缩的高精度底模 `gemma-4-12B-it-Q8_0.gguf`（或 `BF16` 原版）挂载 5 枚 LoRA**（`--preset 12b` / `12b-q8`，总显存约 `12.8–13.0 GiB`），以保留最细腻的微表情与语气推拉；`RTX 3060 / 4070 12GB` 等显存受限显卡则选用本仓专为 12GB 环境打造的 BF16 `imatrix` 特制动态量化版 **`gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf`**（`--preset 12b-q4`，总显存约 `8.5–8.9 GiB`）。
 
@@ -117,12 +119,12 @@ llama-server \
 | File | Size (Bytes) | SHA256 Prefix | Role |
 | :--- | :--- | :--- | :--- |
 | `gemma-4-12B-it-UD-Q4_K_XL-xfy.gguf` | `8,285,657,920` | `5402dd418057` | Dedicated `12 GB` GPU custom `imatrix` base GGUF |
-| `s0_xiaofeiyu_backbone.gguf` | `25,434,912` | `fe2a5cc4ad2e` | Slot 0 Voice Core LoRA (`L36..47` non-QKV, DPO-polished) |
+| `s0_xiaofeiyu_backbone.gguf` | `25,434,912` | `fe2a5cc4ad2e` | Slot 0 (`元气日常` — Everyday Warmth, `L36..47` non-QKV, DPO-polished) |
 | `s0_xiaofeiyu_v4_1_dpo.gguf` | `25,434,912` | `fe2a5cc4ad2e` | Versioned alias of Slot 0 |
-| `c1_neko_clingy.gguf` | `25,434,912` | `5f78a32dff72` | Slot 1 (`粘人猫娘` — Clingy Catgirl) |
-| `c2_older_tease.gguf` | `25,434,912` | `57325470303a` | Slot 2 (`年上御姐` — Teasing Older Sister) |
-| `c3_brat_mesugaki.gguf` | `25,434,912` | `fa0e68a8d151` | Slot 3 (`恶劣雌小鬼` — Cheeky Tsundere) |
-| `c4_fragile_porcelain.gguf` | `25,434,912` | `ac6a18e51c03` | Slot 4 (`易碎依赖` — Delicate Attachment) |
+| `c1_neko_clingy.gguf` | `25,434,912` | `5f78a32dff72` | Slot 1 (`甜系软萌` — Sweet & Clingy) |
+| `c2_older_tease.gguf` | `25,434,912` | `57325470303a` | Slot 2 (`知性姐姐` — Poised Older Sister) |
+| `c3_brat_mesugaki.gguf` | `25,434,912` | `fa0e68a8d151` | Slot 3 (`傲娇毒舌` — Tsundere Wit) |
+| `c4_fragile_porcelain.gguf` | `25,434,912` | `ac6a18e51c03` | Slot 4 (`安静慢热` — Quiet & Gentle) |
 | `lora_gguf_manifest.json` | `1,150` | — | 5-slot LoRA manifest |
 
 Base model usage is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/terms).

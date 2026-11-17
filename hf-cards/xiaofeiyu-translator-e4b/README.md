@@ -72,10 +72,10 @@ node packages/dsh-plugin/scripts/install-dsh.mjs --apply --profile web --upstrea
 
 ## 5-Slot Voice Cartridges in This Repo
 
-- `s0_xiaofeiyu_backbone.gguf` — Slot 0 Core Xiaofeiyu Mandarin IM rhythm
-- `c1_neko_clingy.gguf` — Slot 1 Affectionate clingy catgirl (`粘人猫娘`)
-- `c2_older_tease.gguf` — Slot 2 Playful teasing older sister (`年上御姐`)
-- `c3_brat_mesugaki.gguf` — Slot 3 Cheeky tsundere banter (`恶劣雌小鬼`)
-- `c4_fragile_porcelain.gguf` — Slot 4 Quiet delicate attachment (`易碎依赖`)
+- `s0_xiaofeiyu_backbone.gguf` — Slot 0 Everyday Warmth (`元气日常`)
+- `c1_neko_clingy.gguf` — Slot 1 Sweet & Clingy (`甜系软萌`)
+- `c2_older_tease.gguf` — Slot 2 Poised Older Sister (`知性姐姐`)
+- `c3_brat_mesugaki.gguf` — Slot 3 Tsundere Wit (`傲娇毒舌`)
+- `c4_fragile_porcelain.gguf` — Slot 4 Quiet & Gentle (`安静慢热`)
 
 Base model usage is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/terms).

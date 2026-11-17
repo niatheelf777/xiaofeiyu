@@ -44,28 +44,28 @@ window.__ModuleLoader__.load({
     };
 
     const FLAVOR_META = {
-      pure: { label: "纯原版", accent: "#2d6a4f" },
-      neko: { label: "粘人猫娘", accent: "#c87d62" },
-      tease: { label: "年上御姐", accent: "#8e5258" },
-      brat: { label: "嘴硬雌小鬼", accent: "#be8b32" },
-      fragile: { label: "低体温易碎", accent: "#587a82" },
+      pure: { label: "元气日常", accent: "#2d6a4f" },
+      neko: { label: "甜系软萌", accent: "#c87d62" },
+      tease: { label: "知性姐姐", accent: "#8e5258" },
+      brat: { label: "傲娇毒舌", accent: "#be8b32" },
+      fragile: { label: "安静慢热", accent: "#587a82" },
       mix: { label: "双味混调", accent: "#2d6a4f" },
     };
 
     const PRESET_OPTIONS = [
-      { id: "pure", label: "纯原版", values: [1.0, 0.0, 0.0, 0.0, 0.0], flavor: "pure" },
-      { id: "neko_sweet", label: "微甜猫系", values: [1.0, 0.65, 0.0, 0.0, 0.0], flavor: "neko" },
-      { id: "tease_neko", label: "御姐逗猫", values: [0.95, 0.4, 0.7, 0.0, 0.0], flavor: "tease" },
-      { id: "brat_spice", label: "嘴硬雌小鬼", values: [1.0, 0.0, 0.0, 0.85, 0.0], flavor: "brat" },
-      { id: "fragile_tipsy", label: "易碎微醺", values: [0.95, 0.0, 0.0, 0.0, 0.6], flavor: "fragile" },
+      { id: "pure", label: "元气日常", values: [1.0, 0.0, 0.0, 0.0, 0.0], flavor: "pure" },
+      { id: "neko_sweet", label: "微甜软萌", values: [1.0, 0.65, 0.0, 0.0, 0.0], flavor: "neko" },
+      { id: "tease_neko", label: "知性甜混", values: [0.95, 0.4, 0.7, 0.0, 0.0], flavor: "tease" },
+      { id: "brat_spice", label: "傲娇毒舌", values: [1.0, 0.0, 0.0, 0.85, 0.0], flavor: "brat" },
+      { id: "fragile_tipsy", label: "安静轻柔", values: [0.95, 0.0, 0.0, 0.0, 0.6], flavor: "fragile" },
     ];
 
     const SLIDER_FIELDS = [
-      { key: "xiaofeiyu", idx: 0, label: "s0 原版底座" },
-      { key: "neko_clingy", idx: 1, label: "c1 粘人猫娘" },
-      { key: "older_tease", idx: 2, label: "c2 年上御姐" },
-      { key: "brat_mesugaki", idx: 3, label: "c3 嘴硬雌小鬼" },
-      { key: "fragile_porcelain", idx: 4, label: "c4 低体温易碎" },
+      { key: "xiaofeiyu", idx: 0, label: "s0 元气日常" },
+      { key: "neko_clingy", idx: 1, label: "c1 甜系软萌" },
+      { key: "older_tease", idx: 2, label: "c2 知性姐姐" },
+      { key: "brat_mesugaki", idx: 3, label: "c3 傲娇毒舌" },
+      { key: "fragile_porcelain", idx: 4, label: "c4 安静慢热" },
     ];
 
     function parseJsonObject(raw) {

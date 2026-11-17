@@ -32,4 +32,5 @@ python server/launch_local.py --preset 12b-q4 --auto-download-llama --open
 
 - **显存允许首选 `Q8_0` 高精度挂 LoRA**：`16 GB+` 显卡与 `24 GB+` Mac 首选 `--preset 12b`（或 `12b-q8`），还原公网试玩站 `xfy.tospeak.top` 同款无损语气推拉；`12 GB` 显存受限卡选用特制 `UD-Q4_K_XL-xfy`（`--preset 12b-q4`，约 `8.5–8.9 GiB`）；`6–8 GB` 小显存可用 `E4B` 声带代理外挂云端大脑。
 - **微调不降智（Split-Phase 脑声解耦）**：思考链、Python 沙箱算账与代码卡全程 `LoRA = 0.0` 原厂智商运行（`GEN1..5 = 5/5`），仅在微信短气泡 `<|"|>` 区间挂载口语声带（`0%` 动作括号/Emoji 戏精污染）。
-- **五滑条无重启实时混音**：单次 OpenAI 请求通过 `model="xiaofeiyu-v4|w0,w1,w2,w3,w4"` 连续混调「原版日常 (`s0`) + 粘人猫娘 (`c1`) + 年上御姐 (`c2`) + 恶劣雌小鬼 (`c3`) + 易碎依赖 (`c4`)」。
+- **五滑条无重启实时混音**：单次 OpenAI 请求通过 `model="xiaofeiyu-v4|w0,w1,w2,w3,w4"` 连续混调「元气日常 (`s0`) + 甜系软萌 (`c1`) + 知性姐姐 (`c2`) + 傲娇毒舌 (`c3`) + 安静慢热 (`c4`)」。
+- **免显卡云端试玩**：提供 [`xiaofeiyu_colab_free_t4.ipynb`](https://colab.research.google.com/github/niatheelf777/xiaofeiyu/blob/main/notebooks/xiaofeiyu_colab_free_t4.ipynb) 在 Colab 免费 `T4 15 GB` 单元格内直接拖拽二维性格球盘对话。

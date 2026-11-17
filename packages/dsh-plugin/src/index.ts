@@ -46,11 +46,11 @@ export const Config = z.object({
     .default('custom')
     .description('风格预设档位（选 custom 时由下方 5 根滑条自由混音）')
     .volatile(),
-  xiaofeiyu: sliderField(1.0, '基底滑条：原版小肥鱼 (s0)'),
-  neko_clingy: sliderField(0.0, '滤镜滑条 1：粘人猫娘 (c1)'),
-  older_tease: sliderField(0.0, '滤镜滑条 2：年上御姐 (c2)'),
-  brat_mesugaki: sliderField(0.0, '滤镜滑条 3：嘴硬雌小鬼 (c3)'),
-  fragile_porcelain: sliderField(0.0, '滤镜滑条 4：低体温易碎感 (c4)'),
+  xiaofeiyu: sliderField(1.0, '基底滑条：元气日常 (s0)'),
+  neko_clingy: sliderField(0.0, '滤镜滑条 1：甜系软萌 (c1)'),
+  older_tease: sliderField(0.0, '滤镜滑条 2：知性姐姐 (c2)'),
+  brat_mesugaki: sliderField(0.0, '滤镜滑条 3：傲娇毒舌 (c3)'),
+  fragile_porcelain: sliderField(0.0, '滤镜滑条 4：安静慢热 (c4)'),
   upstreamBaseUrl: z.string().default('http://127.0.0.1:8081/v1').description('Unified 网关地址').volatile(),
   translatorProxyUrl: z.string().default('http://127.0.0.1:18088/v1').description('E4B 语音翻译代理地址').volatile(),
   apiKeyRef: z.string().default('XFY_API_KEY').description('可选上游凭据引用名').volatile(),

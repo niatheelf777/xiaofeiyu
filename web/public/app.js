@@ -2,18 +2,18 @@ const STORAGE_KEY = 'xfy_public_v2_store';
 const LEGACY_STORAGE_KEY = 'xfy_public_v1_store';
 
 const QUICK_MODES = [
-  { id: 'pure', label: '原版日常', u: 0, v: 0 },
-  { id: 'neko', label: '粘人猫娘', u: -0.82, v: 0.82 },
-  { id: 'tease', label: '年上御姐', u: 0.82, v: 0.82 },
-  { id: 'fragile', label: '易碎依赖', u: -0.82, v: -0.82 },
-  { id: 'brat', label: '恶劣雌小鬼', u: 0.82, v: -0.82 },
+  { id: 'pure', label: '元气日常', u: 0, v: 0 },
+  { id: 'neko', label: '甜系软萌', u: -0.82, v: 0.82 },
+  { id: 'tease', label: '知性姐姐', u: 0.82, v: 0.82 },
+  { id: 'fragile', label: '安静慢热', u: -0.82, v: -0.82 },
+  { id: 'brat', label: '傲娇毒舌', u: 0.82, v: -0.82 },
 ];
 
 const CORNERS = [
-  { key: 'neko_clingy', short: '猫娘', light: '微甜猫系', full: '粘人猫娘', dx: -Math.SQRT1_2, dy: Math.SQRT1_2, color: '#C87D62' },
-  { key: 'older_tease', short: '御姐', light: '轻熟御姐', full: '年上御姐', dx: Math.SQRT1_2, dy: Math.SQRT1_2, color: '#8E5258' },
-  { key: 'fragile_porcelain', short: '易碎', light: '微醺易碎', full: '易碎依赖', dx: -Math.SQRT1_2, dy: -Math.SQRT1_2, color: '#587A82' },
-  { key: 'brat_mesugaki', short: '雌小鬼', light: '微辣小鬼', full: '恶劣雌小鬼', dx: Math.SQRT1_2, dy: -Math.SQRT1_2, color: '#BE8B32' },
+  { key: 'neko_clingy', short: '软萌', light: '微甜软萌', full: '甜系软萌', dx: -Math.SQRT1_2, dy: Math.SQRT1_2, color: '#C87D62' },
+  { key: 'older_tease', short: '姐姐', light: '轻熟知性', full: '知性姐姐', dx: Math.SQRT1_2, dy: Math.SQRT1_2, color: '#8E5258' },
+  { key: 'fragile_porcelain', short: '慢热', light: '安静轻柔', full: '安静慢热', dx: -Math.SQRT1_2, dy: -Math.SQRT1_2, color: '#587A82' },
+  { key: 'brat_mesugaki', short: '傲娇', light: '微辣傲娇', full: '傲娇毒舌', dx: Math.SQRT1_2, dy: -Math.SQRT1_2, color: '#BE8B32' },
 ];
 
 const STARTER_PROMPTS = [
@@ -73,7 +73,7 @@ function orbToMoodState(rawU, rawV) {
         brat_mesugaki: 0,
         fragile_porcelain: 0,
       },
-      label: '原版日常',
+      label: '元气日常',
       accent: '#2D6A4F',
       matchedModeId: 'pure',
     };
@@ -102,7 +102,7 @@ function orbToMoodState(rawU, rawV) {
     return { corner: c, share };
   }).sort((a, b) => b.share - a.share);
 
-  let label = '原版日常';
+  let label = '元气日常';
   const top = shares[0];
   const second = shares[1];
   if (top && top.share >= 0.8) {
@@ -1104,48 +1104,32 @@ async function sendMessage(rawText, options = {}) {
       weights: mood.weights,
     };
 
-    const streamAbort = new AbortController();
-    let idleWatchdog = null;
-    const resetIdleWatchdog = () => {
-      if (idleWatchdog) clearTimeout(idleWatchdog);
-      idleWatchdog = setTimeout(() => {
-        streamAbort.abort(new Error('CLIENT_IDLE_TIMEOUT'));
-      }, 45_000);
-    };
-    const totalWatchdog = setTimeout(() => {
-      streamAbort.abort(new Error('CLIENT_TOTAL_TIMEOUT'));
-    }, 135_000);
-    resetIdleWatchdog();
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadBody),
+    });
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadBody),
-        signal: streamAbort.signal,
-      });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || '刚才没连上，请稍后再试一次。');
+    }
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || '刚才没连上，请稍后再试一次。');
-      }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = 'message';
+    let doneReceived = false;
+    let hitNodeId = String(res.headers.get('x-xfy-cluster-node') || '').trim();
+    if (hitNodeId === 'waking') hitNodeId = '';
+    if (hitNodeId) {
+      runtime.lastHitNodeId = hitNodeId;
+      renderClusterPopover();
+    }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentEvent = 'message';
-      let doneReceived = false;
-      let hitNodeId = String(res.headers.get('x-xfy-cluster-node') || '').trim();
-      if (hitNodeId === 'waking') hitNodeId = '';
-      if (hitNodeId) {
-        runtime.lastHitNodeId = hitNodeId;
-        renderClusterPopover();
-      }
-
-      while (true) {
-        const { value, done } = await reader.read();
-        resetIdleWatchdog();
-        if (done) break;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? '';
@@ -1226,13 +1210,8 @@ async function sendMessage(rawText, options = {}) {
       conv.updatedAt = Date.now();
       saveStore(store);
     }
-    } finally {
-      if (idleWatchdog) clearTimeout(idleWatchdog);
-      clearTimeout(totalWatchdog);
-    }
   } catch (err) {
-    const isAbort = err?.name === 'AbortError';
-    runtime.pendingError = isAbort ? '等待回复超时，请再试一次。' : (err.message || '网络有点抖动，请稍后再试。');
+    runtime.pendingError = err.message || '网络有点抖动，请稍后再试。';
     runtime.lastFailedPrompt = clean;
   } finally {
     runtime.isSending = false;

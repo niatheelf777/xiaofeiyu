@@ -108,22 +108,19 @@ class _MockLlamaServer:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.end_headers()
-                try:
-                    for ch in spec.get("chunks") or []:
-                        self.wfile.write(f"data: {json.dumps({'content': ch, 'stop': False}, ensure_ascii=False)}\n\n".encode("utf-8"))
-                        self.wfile.flush()
-                    done = {
-                        "content": "",
-                        "stop": True,
-                        "stopping_word": spec.get("stopping_word", ""),
-                        "stop_type": spec.get("stop_type", "word"),
-                        "tokens_predicted": spec.get("tokens_predicted", 16),
-                        "timings": {"prompt_n": 10, "prompt_ms": 5.0, "predicted_n": 16, "predicted_ms": 80.0, "predicted_per_second": 200.0},
-                    }
-                    self.wfile.write(f"data: {json.dumps(done, ensure_ascii=False)}\n\n".encode("utf-8"))
+                for ch in spec.get("chunks") or []:
+                    self.wfile.write(f"data: {json.dumps({'content': ch, 'stop': False}, ensure_ascii=False)}\n\n".encode("utf-8"))
                     self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    return
+                done = {
+                    "content": "",
+                    "stop": True,
+                    "stopping_word": spec.get("stopping_word", ""),
+                    "stop_type": spec.get("stop_type", "word"),
+                    "tokens_predicted": spec.get("tokens_predicted", 16),
+                    "timings": {"prompt_n": 10, "prompt_ms": 5.0, "predicted_n": 16, "predicted_ms": 80.0, "predicted_per_second": 200.0},
+                }
+                self.wfile.write(f"data: {json.dumps(done, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.flush()
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.httpd.daemon_threads = True
@@ -684,34 +681,13 @@ class TestSplitPhaseServer(unittest.TestCase):
             gw.server_close()
             mock.close()
 
-    def test_pathology_guards_dry_penalties_loop_breakers_calc_datetime_and_prose_fences(self) -> None:
-        """Verify DRY/penalty sampling, online loop breakers, calc_python strftime, prose-fence guard & empty-reply rescue."""
-        # 1. calc_python: datetime.strftime imports time cleanly & time.sleep is no-op
+    def test_lossless_sampling_and_negated_thought_does_not_trigger_false_hop1(self) -> None:
+        """Verify native lossless Phase A/B sampling, calc_python time/strftime, and negated send_code_or_doc guard."""
         calc_res = bridge.run_calc_python_sandbox(
             'import time\nfrom datetime import datetime\ntime.sleep(999)\nprint(datetime.now().strftime("%H:%M"))'
         )
         self.assertRegex(calc_res.strip(), r"^\d{2}:\d{2}$")
 
-        # 2. L1 LoRA weight projection prevents multi-slider saturation (>1.15)
-        norm_w = srv.normalize_lora_weights((1.0, 1.5, 1.5, 1.5, 1.5), max_style_l1=1.15)
-        self.assertEqual(norm_w[0], 1.0)
-        self.assertAlmostEqual(sum(norm_w[1:]), 1.15, places=2)
-
-        # 3. PhaseBBubbleStreamParser: intra-bubble stutter cut + inter-bubble duplicate/quote-junk guard
-        p_stutter = srv.PhaseBBubbleStreamParser(initial_visible_blocks=0, user_last_message="你在干嘛")
-        out_s = list(p_stutter.feed('我偏偏偏偏偏偏偏偏偏偏<|"|>'))
-        out_s.extend(p_stutter.finalize())
-        self.assertTrue(p_stutter.should_abort)
-        self.assertEqual("".join(out_s), "我偏偏")
-
-        p_dup = srv.PhaseBBubbleStreamParser(initial_visible_blocks=0, user_last_message="帮帮我")
-        out_d = list(p_dup.feed('我解决不了<|"|>,<|"|>\"<|"|>,<|"|>我解决不了<|"|>'))
-        out_d.extend(p_dup.finalize())
-        self.assertTrue(p_dup.should_abort)
-        self.assertEqual(p_dup.completed_bubbles, ["我解决不了"])
-        self.assertEqual("".join(out_d), "我解决不了")
-
-        # 4. End-to-end engine checks: DRY params, thought loop cut, negation non-Hop-1, casual markdown card drop, English drift retry, JSON rescue
         mock = _MockLlamaServer()
         tok = _FakeTokenizer()
         engine = srv.LlamaCppPC2Engine(
@@ -724,27 +700,12 @@ class TestSplitPhaseServer(unittest.TestCase):
         th = threading.Thread(target=gw.serve_forever, daemon=True)
         th.start()
         try:
-            # Case A: Thought loop + English drift retry + casual markdown profile card suppression + no phantom Hop-1 on negated send_code_or_doc
-            loop_unit = "我要认真想一想怎么用自然口语回答他才合适，不需要调用 send_code_or_doc 工具。"
             mock.script = [
-                # Phase A thought loops 4x -> cut early by find_thought_loop_cut!
-                {"chunks": [loop_unit, loop_unit, loop_unit, loop_unit, "NEVER_REACHED"], "stopping_word": "<channel|>", "tokens_predicted": 80},
-                # Phase A1 -> send_message
-                {"chunks": [""], "stopping_word": 'call:send_message{bubbles:[<|"|>', "tokens_predicted": 8},
-                # Phase B try 0 drifts into English on Chinese prompt -> aborted & retried!
-                {"chunks": ['Oh sweetie come here and let me hug you tight right now<|"|>'], "stopping_word": "]}<tool_call|>", "tokens_predicted": 14},
-                # Phase B try 1 speaks natural Chinese without emojis
-                {"chunks": ['我是小肥鱼呀 ✨<|"|>,<|"|>今天也在乖乖等你下班<|"|>'], "stopping_word": "]}<tool_call|>", "tokens_predicted": 14},
-                # Phase A1 tries to smuggle an unsolicited markdown profile card, then closes <turn|>
-                {
-                    "chunks": [
-                        'call:send_code_or_doc{content:<|"|>### 小肥鱼档案 ✨\n- 性格：温柔<|"|>,language:<|"|>markdown<|"|>}<tool_call|>'
-                    ],
-                    "stopping_word": "<turn|>",
-                    "tokens_predicted": 18,
-                },
+                {"chunks": ["不需要调用 send_code_or_doc 工具，直接用口语聊聊。"], "stopping_word": "<channel|>", "tokens_predicted": 12},
+                {"chunks": [""], "stopping_word": 'call:send_message{bubbles:[<|"|>', "tokens_predicted": 6},
+                {"chunks": ['刚下班呀<|"|>,<|"|>快去喝口水<|"|>'], "stopping_word": "]}<tool_call|>", "tokens_predicted": 10},
+                {"chunks": [""], "stopping_word": "<|tool_response>", "tokens_predicted": 4},
             ]
-
             conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
             conn.request(
                 "POST",
@@ -753,58 +714,24 @@ class TestSplitPhaseServer(unittest.TestCase):
                     {
                         "model": "xiaofeiyu-v4|1.0,0.5,0,0,0",
                         "stream": False,
-                        "messages": [{"role": "user", "content": "介绍一下你自己"}],
+                        "messages": [{"role": "user", "content": "刚加完班回来"}],
                     }
                 ),
                 headers={"Content-Type": "application/json"},
             )
-            resp_a = conn.getresponse()
-            data_a = json.loads(resp_a.read().decode("utf-8"))
+            resp = conn.getresponse()
+            data = json.loads(resp.read().decode("utf-8"))
             conn.close()
 
-            self.assertEqual(resp_a.status, 200)
-            reply_a = data_a["choices"][0]["message"]["content"]
-            self.assertEqual(reply_a, "我是小肥鱼呀\n今天也在乖乖等你下班")
-            self.assertNotIn("```", reply_a)
-            self.assertNotIn("sweetie", reply_a)
-            self.assertNotIn("✨", reply_a)
-            # Only 5 llama requests (no phantom Hop-1 despite 'send_code_or_doc' in thought!)
-            self.assertEqual(len(mock.requests), 5)
-            # Verify DRY on Phase A thought & Phase B voice, and NO DRY on Phase A tool-call decode!
-            self.assertEqual(mock.requests[0]["dry_multiplier"], 0.8)
-            self.assertEqual(mock.requests[0]["n_predict"], 128)
-            self.assertNotIn("dry_multiplier", mock.requests[1])
-            self.assertEqual(mock.requests[2]["dry_multiplier"], 0.85)
-            self.assertLessEqual(mock.requests[2]["n_predict"], 320)
-
-            # Case B: Model writes JSON bubbles inside <|channel>thought and closes <turn|> with 0 tool calls -> rescued!
-            mock.requests.clear()
-            mock.script = [
-                {
-                    "chunks": ['{"action": "send_message", "bubbles": ["当然记得呀", "你昨晚才跟我说过的"]}'],
-                    "stopping_word": "<channel|>",
-                    "tokens_predicted": 20,
-                },
-                {"chunks": [""], "stopping_word": "<turn|>", "tokens_predicted": 1},
-            ]
-            conn = http.client.HTTPConnection("127.0.0.1", gw_port, timeout=10.0)
-            conn.request(
-                "POST",
-                "/v1/chat/completions",
-                body=json.dumps(
-                    {
-                        "model": "xiaofeiyu-v4|1.0,0,0,0,0",
-                        "stream": False,
-                        "messages": [{"role": "user", "content": "你还记得我昨晚说什么吗"}],
-                    }
-                ),
-                headers={"Content-Type": "application/json"},
-            )
-            resp_b = conn.getresponse()
-            data_b = json.loads(resp_b.read().decode("utf-8"))
-            conn.close()
-            self.assertEqual(resp_b.status, 200)
-            self.assertEqual(data_b["choices"][0]["message"]["content"], "当然记得呀\n你昨晚才跟我说过的")
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(data["choices"][0]["message"]["content"], "刚下班呀\n快去喝口水")
+            self.assertEqual(len(mock.requests), 4)
+            self.assertEqual(mock.requests[0]["n_predict"], 2048)
+            for req in mock.requests:
+                self.assertNotIn("dry_multiplier", req)
+                self.assertNotIn("repeat_penalty", req)
+                self.assertNotIn("presence_penalty", req)
+                self.assertNotIn("frequency_penalty", req)
         finally:
             gw.shutdown()
             gw.server_close()

@@ -42,10 +42,10 @@ sys.dont_write_bytecode = True
 
 CARTRIDGE_IDS = ("neko_clingy", "older_tease", "brat_mesugaki", "fragile_porcelain")
 CARTRIDGE_LABELS = {
-    "neko_clingy": "家养粘人猫娘",
-    "older_tease": "坏心眼年上御姐",
-    "brat_mesugaki": "恶劣雌小鬼",
-    "fragile_porcelain": "易碎体温症",
+    "neko_clingy": "甜系软萌",
+    "older_tease": "知性姐姐",
+    "brat_mesugaki": "傲娇毒舌",
+    "fragile_porcelain": "安静慢热",
 }
 
 NON_QKV_NAMES = frozenset(("o_proj", "gate_proj", "up_proj", "down_proj"))
